@@ -4,7 +4,6 @@ import io.netty.buffer.ByteBuf;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.db2client.impl.command.AuthenticationCommandBase;
 import io.vertx.db2client.impl.util.BufferUtils;
-import io.vertx.db2client.impl.util.RsaPublicKeyEncryptor;
 import io.vertx.sqlclient.impl.command.CommandResponse;
 
 import java.nio.charset.StandardCharsets;
@@ -28,58 +27,58 @@ abstract class AuthenticationCommandBaseCodec<R, C extends AuthenticationCommand
     super(cmd);
   }
 
-  protected final void handleAuthMoreData(byte[] password, ByteBuf payload) {
-    payload.skipBytes(1); // skip the status flag
-    if (isWaitingForRsaPublicKey){
-      String serverRsaPublicKey = readRestOfPacketString(payload, StandardCharsets.UTF_8);
-      sendEncryptedPasswordWithServerRsaPublicKey(password, serverRsaPublicKey);
-    } else {
-      byte flag = payload.readByte();
-      if (flag == FULL_AUTHENTICATION_STATUS_FLAG) {
-        if (encoder.socketConnection.isSsl()) {
-          // send the non-scrambled password directly since it's on a secure connection
-          int nonScrambledPasswordPacketLength = password.length + 1;
-          ByteBuf nonScrambledPasswordPacket = allocateBuffer(nonScrambledPasswordPacketLength + 4);
-          nonScrambledPasswordPacket.writeMediumLE(nonScrambledPasswordPacketLength);
-          nonScrambledPasswordPacket.writeByte(sequenceId);
-          nonScrambledPasswordPacket.writeBytes(password);
-          nonScrambledPasswordPacket.writeByte(0x00); // end with a 0x00
-          sendNonSplitPacket(nonScrambledPasswordPacket);
-        } else {
-          // use server Public Key to encrypt password
-          Buffer serverRsaPublicKey = cmd.serverRsaPublicKey();
-          if (serverRsaPublicKey == null) {
-            // send a public key request
-            isWaitingForRsaPublicKey = true;
-            ByteBuf rsaPublicKeyRequest = allocateBuffer(5);
-            rsaPublicKeyRequest.writeMediumLE(1);
-            rsaPublicKeyRequest.writeByte(sequenceId);
-            rsaPublicKeyRequest.writeByte(AUTH_PUBLIC_KEY_REQUEST_FLAG);
-            sendNonSplitPacket(rsaPublicKeyRequest);
-          } else {
-            // send encrypted password
-            sendEncryptedPasswordWithServerRsaPublicKey(password, serverRsaPublicKey.toString());
-          }
-        }
-      } else if (flag == FAST_AUTH_STATUS_FLAG) {
-        // fast auth success
-      } else {
-        completionHandler.handle(CommandResponse.failure(new UnsupportedOperationException("Unsupported flag for AuthMoreData : " + flag)));
-      }
-    }
-  }
+//  protected final void handleAuthMoreData(byte[] password, ByteBuf payload) {
+//    payload.skipBytes(1); // skip the status flag
+//    if (isWaitingForRsaPublicKey){
+//      String serverRsaPublicKey = readRestOfPacketString(payload, StandardCharsets.UTF_8);
+//      sendEncryptedPasswordWithServerRsaPublicKey(password, serverRsaPublicKey);
+//    } else {
+//      byte flag = payload.readByte();
+//      if (flag == FULL_AUTHENTICATION_STATUS_FLAG) {
+//        if (encoder.socketConnection.isSsl()) {
+//          // send the non-scrambled password directly since it's on a secure connection
+//          int nonScrambledPasswordPacketLength = password.length + 1;
+//          ByteBuf nonScrambledPasswordPacket = allocateBuffer(nonScrambledPasswordPacketLength + 4);
+//          nonScrambledPasswordPacket.writeMediumLE(nonScrambledPasswordPacketLength);
+//          nonScrambledPasswordPacket.writeByte(sequenceId);
+//          nonScrambledPasswordPacket.writeBytes(password);
+//          nonScrambledPasswordPacket.writeByte(0x00); // end with a 0x00
+//          sendNonSplitPacket(nonScrambledPasswordPacket);
+//        } else {
+//          // use server Public Key to encrypt password
+//          Buffer serverRsaPublicKey = cmd.serverRsaPublicKey();
+//          if (serverRsaPublicKey == null) {
+//            // send a public key request
+//            isWaitingForRsaPublicKey = true;
+//            ByteBuf rsaPublicKeyRequest = allocateBuffer(5);
+//            rsaPublicKeyRequest.writeMediumLE(1);
+//            rsaPublicKeyRequest.writeByte(sequenceId);
+//            rsaPublicKeyRequest.writeByte(AUTH_PUBLIC_KEY_REQUEST_FLAG);
+//            sendNonSplitPacket(rsaPublicKeyRequest);
+//          } else {
+//            // send encrypted password
+//            sendEncryptedPasswordWithServerRsaPublicKey(password, serverRsaPublicKey.toString());
+//          }
+//        }
+//      } else if (flag == FAST_AUTH_STATUS_FLAG) {
+//        // fast auth success
+//      } else {
+//        completionHandler.handle(CommandResponse.failure(new UnsupportedOperationException("Unsupported flag for AuthMoreData : " + flag)));
+//      }
+//    }
+//  }
 
-  protected final void sendEncryptedPasswordWithServerRsaPublicKey(byte[] password, String serverRsaPublicKeyContent) {
-    byte[] encryptedPassword;
-    try {
-      byte[] passwordInput = Arrays.copyOf(password, password.length + 1); // need to append 0x00(NULL) to the password
-      encryptedPassword = RsaPublicKeyEncryptor.encrypt(passwordInput, authPluginData, serverRsaPublicKeyContent);
-    } catch (Exception e) {
-      completionHandler.handle(CommandResponse.failure(e));
-      return;
-    }
-    sendBytesAsPacket(encryptedPassword);
-  }
+//  protected final void sendEncryptedPasswordWithServerRsaPublicKey(byte[] password, String serverRsaPublicKeyContent) {
+//    byte[] encryptedPassword;
+//    try {
+//      byte[] passwordInput = Arrays.copyOf(password, password.length + 1); // need to append 0x00(NULL) to the password
+//      encryptedPassword = RsaPublicKeyEncryptor.encrypt(passwordInput, authPluginData, serverRsaPublicKeyContent);
+//    } catch (Exception e) {
+//      completionHandler.handle(CommandResponse.failure(e));
+//      return;
+//    }
+//    sendBytesAsPacket(encryptedPassword);
+//  }
 
   protected final void encodeConnectionAttributes(Map<String, String> clientConnectionAttributes, ByteBuf packet) {
     ByteBuf kv = encoder.chctx.alloc().ioBuffer();

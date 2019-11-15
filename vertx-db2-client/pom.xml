@@ -34,7 +34,6 @@
   <properties>
     <doc.skip>false</doc.skip>
     <docs.dir>${project.basedir}/src/main/docs</docs.dir>
-    <generated.dir>${project.basedir}/src/main/generated</generated.dir>
   </properties>
 
 
@@ -58,6 +57,13 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-sql-client</artifactId>
+    </dependency>
+    
+    <!-- Temp dependency for cross-checking w/ JDBC -->
+    <dependency>
+        <groupId>com.ibm.db2</groupId>
+        <artifactId>jcc</artifactId>
+        <version>11.1.4.4</version>
     </dependency>
 
     <!-- Testing purposes -->
@@ -110,9 +116,5 @@
       </plugin>
     </plugins>
   </build>
-
-  <profiles>
-
-  </profiles>
 
 </project>

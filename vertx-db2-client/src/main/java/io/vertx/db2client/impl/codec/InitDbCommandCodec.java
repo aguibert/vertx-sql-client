@@ -11,7 +11,7 @@ class InitDbCommandCodec extends CommandCodec<Void, InitDbCommand> {
   }
 
   @Override
-  void encode(MySQLEncoder encoder) {
+  void encode(DB2Encoder encoder) {
     super.encode(encoder);
     sendInitDbCommand();
   }

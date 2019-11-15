@@ -12,7 +12,8 @@ class PingCommandCodec extends CommandCodec<Void, PingCommand> {
   }
 
   @Override
-  void encode(MySQLEncoder encoder) {
+  void encode(DB2Encoder encoder) {
+      System.out.println("@AGG sending ping command");
     super.encode(encoder);
     sendPingCommand();
   }

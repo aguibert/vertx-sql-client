@@ -1,6 +1,7 @@
 package io.vertx.db2client.impl;
 
 import io.vertx.core.json.JsonObject;
+import io.vertx.db2client.DB2ConnectOptions;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;

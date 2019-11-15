@@ -1,18 +1,20 @@
 package io.vertx.db2client.impl;
 
-import io.vertx.core.*;
-import io.vertx.core.buffer.Buffer;
+import java.util.Collections;
+import java.util.Map;
+
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Closeable;
+import io.vertx.core.Context;
+import io.vertx.core.Future;
+import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.impl.NetSocketInternal;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetClientOptions;
 import io.vertx.core.net.NetSocket;
-import io.vertx.core.net.TrustOptions;
 import io.vertx.db2client.DB2ConnectOptions;
-import io.vertx.db2client.SslMode;
 import io.vertx.sqlclient.impl.Connection;
-
-import java.util.Collections;
-import java.util.Map;
 
 public class DB2ConnectionFactory {
   private final NetClient netClient;

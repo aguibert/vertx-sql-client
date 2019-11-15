@@ -27,7 +27,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.impl.NetSocketInternal;
-import io.vertx.db2client.impl.codec.MySQLCodec;
+import io.vertx.db2client.impl.codec.DB2Codec;
 import io.vertx.db2client.impl.command.InitialHandshakeCommand;
 import io.vertx.sqlclient.impl.Connection;
 import io.vertx.sqlclient.impl.SocketConnectionBase;
@@ -38,7 +38,7 @@ import io.vertx.sqlclient.impl.command.CommandResponse;
  */
 public class DB2SocketConnection extends SocketConnectionBase {
 
-  private MySQLCodec codec;
+  private DB2Codec codec;
 
   public DB2SocketConnection(NetSocketInternal socket,
                                boolean cachePreparedStatements,
@@ -60,28 +60,9 @@ public class DB2SocketConnection extends SocketConnectionBase {
 
   @Override
   public void init() {
-    codec = new MySQLCodec(this);
+    codec = new DB2Codec(this);
     ChannelPipeline pipeline = socket.channelHandlerContext().pipeline();
     pipeline.addBefore("handler", "codec", codec);
     super.init();
-  }
-
-  public void upgradeToSSLConnection(Handler<AsyncResult<Void>> completionHandler) {
-    // Workaround for Vert.x 3.x
-    ChannelPipeline pipeline = socket.channelHandlerContext().pipeline();
-    Promise<Void> upgradePromise = Promise.promise();
-    upgradePromise.future().setHandler(ar->{
-      if (ar.succeeded()) {
-        completionHandler.handle(Future.succeededFuture());
-      } else {
-        Throwable cause = ar.cause();
-        if (cause instanceof DecoderException) {
-          DecoderException err = (DecoderException) cause;
-          cause = err.getCause();
-        }
-        completionHandler.handle(Future.failedFuture(cause));
-      }
-    });
-    pipeline.addFirst("initiate-ssl-handler", new InitiateSslHandler(this, upgradePromise));
   }
 }

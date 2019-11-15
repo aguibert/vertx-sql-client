@@ -36,21 +36,21 @@ public interface DB2Pool extends Pool {
    * Like {@link #pool(DB2ConnectOptions, PoolOptions)} with {@code connectOptions} build from {@code connectionUri}.
    */
   static DB2Pool pool(String connectionUri, PoolOptions poolOptions) {
-    return pool(fromUri(connectionUri), poolOptions);
+    return pool(new DB2ConnectOptions(connectionUri), poolOptions);
   }
 
   /**
    * Like {@link #pool(Vertx, String,PoolOptions)} with a default {@code poolOptions}..
    */
   static DB2Pool pool(Vertx vertx, String connectionUri) {
-    return pool(vertx, fromUri(connectionUri), new PoolOptions());
+    return pool(vertx, new DB2ConnectOptions(connectionUri), new PoolOptions());
   }
 
   /**
    * Like {@link #pool(Vertx, DB2ConnectOptions, PoolOptions)} with {@code connectOptions} build from {@code connectionUri}.
    */
   static DB2Pool pool(Vertx vertx, String connectionUri, PoolOptions poolOptions) {
-    return pool(vertx, fromUri(connectionUri), poolOptions);
+    return pool(vertx, new DB2ConnectOptions(connectionUri), poolOptions);
   }
 
   /**
@@ -65,6 +65,7 @@ public interface DB2Pool extends Pool {
       throw new IllegalStateException("Running in a Vertx context => use MySQLPool#pool(Vertx, MySQLConnectOptions, PoolOptions) instead");
     }
     VertxOptions vertxOptions = new VertxOptions();
+    vertxOptions.setBlockedThreadCheckInterval(1000 * 60 * 60); // TODO only for debugging purposes
     Vertx vertx = Vertx.vertx(vertxOptions);
     return new DB2PoolImpl(vertx.getOrCreateContext(), true, connectOptions, poolOptions);
   }

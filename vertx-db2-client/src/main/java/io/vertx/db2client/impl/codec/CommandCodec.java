@@ -17,6 +17,7 @@
 package io.vertx.db2client.impl.codec;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.vertx.core.Handler;
 import io.vertx.db2client.DB2Exception;
 import io.vertx.db2client.impl.util.BufferUtils;
@@ -36,7 +37,7 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
   public R result;
   final C cmd;
   int sequenceId;
-  MySQLEncoder encoder;
+  DB2Encoder encoder;
 
   CommandCodec(C cmd) {
     this.cmd = cmd;
@@ -44,7 +45,7 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
 
   abstract void decodePayload(ByteBuf payload, int payloadLength);
 
-  void encode(MySQLEncoder encoder) {
+  void encode(DB2Encoder encoder) {
     this.encoder = encoder;
   }
 
@@ -57,6 +58,8 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
   }
 
   void sendPacket(ByteBuf packet, int payloadLength) {
+      //dumpBuffer(packet);
+      System.out.println("@AGG sending packet: " + packet);
     if (payloadLength >= PACKET_PAYLOAD_LENGTH_LIMIT) {
       /*
          The original packet exceeds the limit of packet length, split the packet here.
@@ -66,6 +69,20 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
     } else {
       sendNonSplitPacket(packet);
     }
+  }
+  
+  public static void dumpBuffer(ByteBuf buffer) {
+      System.out.print(buffer.toString());
+      ByteBuf copy = Unpooled.copiedBuffer(buffer);
+      for (int i = 0; i < copy.writerIndex(); i++) {
+          if (i % 16 == 0)
+              System.out.print("\n  ");
+          if (i % 8 == 0)
+              System.out.print("    ");
+          System.out.print(" ");
+          System.out.print(String.format("%02x", copy.getByte(i)));
+      }
+      System.out.println();
   }
 
   private void sendSplitPacket(ByteBuf packet) {

@@ -11,7 +11,7 @@ class CloseConnectionCommandCodec extends CommandCodec<Void, CloseConnectionComm
   }
 
   @Override
-  void encode(MySQLEncoder encoder) {
+  void encode(DB2Encoder encoder) {
     super.encode(encoder);
     sendQuitCommand();
   }
