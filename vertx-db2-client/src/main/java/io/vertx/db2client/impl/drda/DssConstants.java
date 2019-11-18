@@ -24,7 +24,7 @@ package io.vertx.db2client.impl.drda;
     This class defines DSS constants that are shared in the classes implementing
     the DRDA protocol.
 */
-class DssConstants
+public class DssConstants
 {
 
   protected static final int MAX_DSS_LENGTH = 32767;

@@ -59,8 +59,8 @@ class DB2Encoder extends ChannelOutboundHandlerAdapter {
   private CommandCodec<?, ?> wrap(CommandBase<?> cmd) {
     if (cmd instanceof InitialHandshakeCommand) {
       return new InitialHandshakeCommandCodec((InitialHandshakeCommand) cmd);
-//    } else if (cmd instanceof SimpleQueryCommand) {
-//      return new SimpleQueryCommandCodec((SimpleQueryCommand) cmd);
+    } else if (cmd instanceof SimpleQueryCommand) {
+      return new SimpleQueryCommandCodec((SimpleQueryCommand) cmd);
 //    } else if (cmd instanceof ExtendedQueryCommand) {
 //      return new ExtendedQueryCommandCodec((ExtendedQueryCommand) cmd);
 //    } else if (cmd instanceof ExtendedBatchQueryCommand<?>) {

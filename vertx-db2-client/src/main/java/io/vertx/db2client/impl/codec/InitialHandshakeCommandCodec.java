@@ -16,33 +16,37 @@
  */
 package io.vertx.db2client.impl.codec;
 
+import static io.vertx.db2client.impl.codec.CapabilitiesFlag.CLIENT_CONNECT_ATTRS;
+import static io.vertx.db2client.impl.codec.CapabilitiesFlag.CLIENT_CONNECT_WITH_DB;
+import static io.vertx.db2client.impl.codec.CapabilitiesFlag.CLIENT_DEPRECATE_EOF;
+import static io.vertx.db2client.impl.codec.CapabilitiesFlag.CLIENT_PLUGIN_AUTH;
+import static io.vertx.db2client.impl.codec.CapabilitiesFlag.CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA;
+import static io.vertx.db2client.impl.codec.CapabilitiesFlag.CLIENT_SECURE_CONNECTION;
+import static io.vertx.db2client.impl.codec.CapabilitiesFlag.CLIENT_SSL;
+import static io.vertx.db2client.impl.codec.Packets.ERROR_PACKET_HEADER;
+import static io.vertx.db2client.impl.codec.Packets.OK_PACKET_HEADER;
+import static io.vertx.db2client.impl.codec.Packets.PACKET_PAYLOAD_LENGTH_LIMIT;
+
+import java.net.Inet4Address;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
+import java.util.Map;
+
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.vertx.db2client.impl.command.InitialHandshakeCommand;
 import io.vertx.db2client.impl.drda.CCSIDManager;
 import io.vertx.db2client.impl.drda.CodePoint;
+import io.vertx.db2client.impl.drda.DRDAConnectRequest;
+import io.vertx.db2client.impl.drda.DRDAConnectResponse;
+import io.vertx.db2client.impl.drda.DRDAConnectResponse.RDBAccessData;
 import io.vertx.db2client.impl.drda.DRDAConstants;
-import io.vertx.db2client.impl.drda.DRDARequest;
-import io.vertx.db2client.impl.drda.DRDAResponse;
-import io.vertx.db2client.impl.drda.DRDAResponse.RDBAccessData;
 import io.vertx.db2client.impl.util.BufferUtils;
 import io.vertx.db2client.impl.util.CachingSha2Authenticator;
 import io.vertx.db2client.impl.util.Native41Authenticator;
 import io.vertx.sqlclient.impl.Connection;
 import io.vertx.sqlclient.impl.command.CommandResponse;
-
-import static io.vertx.db2client.impl.codec.CapabilitiesFlag.*;
-import static io.vertx.db2client.impl.codec.Packets.*;
-
-import java.net.Inet4Address;
-import java.net.UnknownHostException;
-import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
-import java.util.Arrays;
-import java.util.Map;
 
 class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connection, InitialHandshakeCommand> {
 
@@ -90,7 +94,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
     @Override
     void decodePayload(ByteBuf payload, int payloadLength) {
         System.out.println("\n\n@AGG in decode payload status=" + status);
-        DRDAResponse response = new DRDAResponse(payload, ccsidManager);
+        DRDAConnectResponse response = new DRDAConnectResponse(payload, ccsidManager);
         try {
             switch (status) {
             case ST_CONNECTING:
@@ -100,7 +104,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
                 status = ST_AUTHENTICATING;
                 ByteBuf packet = allocateBuffer();
                 int packetStartIdx = packet.writerIndex();
-                DRDARequest securityCheck = new DRDARequest(packet, ccsidManager);
+                DRDAConnectRequest securityCheck = new DRDAConnectRequest(packet, ccsidManager);
                 securityCheck.buildSECCHK(TARGET_SECURITY_MEASURE,
                         cmd.database(),
                         cmd.username(),
@@ -143,7 +147,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
         ByteBuf packet = allocateBuffer();
         // encode packet header
         int packetStartIdx = packet.writerIndex();
-        DRDARequest cmd = new DRDARequest(packet, ccsidManager);
+        DRDAConnectRequest cmd = new DRDAConnectRequest(packet, ccsidManager);
         try {
             cmd.buildEXCSAT(DRDAConstants.EXTNAM, // externalName,
                     0x0A, // targetAgent,
