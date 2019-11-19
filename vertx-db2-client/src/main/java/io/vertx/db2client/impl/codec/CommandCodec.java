@@ -59,7 +59,7 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
 
   void sendPacket(ByteBuf packet, int payloadLength) {
       System.out.println("@AGG sending packet size=" + payloadLength + "  " + packet);
-      dumpBuffer(packet);
+      DB2Codec.dumpBuffer(packet);
     if (payloadLength >= PACKET_PAYLOAD_LENGTH_LIMIT) {
       /*
          The original packet exceeds the limit of packet length, split the packet here.
@@ -71,20 +71,6 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
     }
   }
   
-  public static void dumpBuffer(ByteBuf buffer) {
-      System.out.print(buffer.toString());
-      ByteBuf copy = Unpooled.copiedBuffer(buffer);
-      for (int i = 0; i < copy.writerIndex(); i++) {
-          if (i % 16 == 0)
-              System.out.print("\n  ");
-          if (i % 8 == 0)
-              System.out.print("    ");
-          System.out.print(" ");
-          System.out.print(String.format("%02x", copy.getByte(i)));
-      }
-      System.out.println();
-  }
-
   private void sendSplitPacket(ByteBuf packet) {
     ByteBuf payload = packet.skipBytes(4);
     while (payload.readableBytes() >= PACKET_PAYLOAD_LENGTH_LIMIT) {
@@ -186,21 +172,21 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
     return BufferUtils.readFixedLengthString(payload, payload.readableBytes(), charset);
   }
 
-  ColumnDefinition decodeColumnDefinitionPacketPayload(ByteBuf payload) {
-    String catalog = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
-    String schema = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
-    String table = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
-    String orgTable = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
-    String name = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
-    String orgName = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
-    long lengthOfFixedLengthFields = BufferUtils.readLengthEncodedInteger(payload);
-    int characterSet = payload.readUnsignedShortLE();
-    long columnLength = payload.readUnsignedIntLE();
-    DataType type = DataType.valueOf(payload.readUnsignedByte());
-    int flags = payload.readUnsignedShortLE();
-    byte decimals = payload.readByte();
-    return new ColumnDefinition(catalog, schema, table, orgTable, name, orgName, characterSet, columnLength, type, flags, decimals);
-  }
+//  ColumnDefinition decodeColumnDefinitionPacketPayload(ByteBuf payload) {
+//    String catalog = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
+//    String schema = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
+//    String table = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
+//    String orgTable = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
+//    String name = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
+//    String orgName = BufferUtils.readLengthEncodedString(payload, StandardCharsets.UTF_8);
+//    long lengthOfFixedLengthFields = BufferUtils.readLengthEncodedInteger(payload);
+//    int characterSet = payload.readUnsignedShortLE();
+//    long columnLength = payload.readUnsignedIntLE();
+//    DataType type = DataType.valueOf(payload.readUnsignedByte());
+//    int flags = payload.readUnsignedShortLE();
+//    byte decimals = payload.readByte();
+//    return new ColumnDefinition(catalog, schema, table, orgTable, name, orgName, characterSet, columnLength, type, flags, decimals);
+//  }
 
   void skipEofPacketIfNeeded(ByteBuf payload) {
     if (!isDeprecatingEofFlagEnabled()) {

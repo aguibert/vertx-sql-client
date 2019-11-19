@@ -16,6 +16,8 @@
  */
 package io.vertx.db2client.impl.codec;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.CombinedChannelDuplexHandler;
 import io.vertx.db2client.impl.DB2SocketConnection;
 
@@ -29,5 +31,35 @@ public class DB2Codec extends CombinedChannelDuplexHandler<DB2Decoder, DB2Encode
     DB2Encoder encoder = new DB2Encoder(inflight, mySQLSocketConnection);
     DB2Decoder decoder = new DB2Decoder(inflight, encoder);
     init(decoder, encoder);
+  }
+  
+  public static void dumpBuffer(ByteBuf buffer) {
+      dumpBuffer(buffer, buffer.readableBytes());
+  }
+  
+  public static void dumpBuffer(ByteBuf buffer, int length) {
+      System.out.print(buffer.toString());
+      ByteBuf copy = buffer.slice(buffer.readerIndex(), length);
+      for (int i = 0; i < copy.writerIndex(); i++) {
+          if (i % 16 == 0)
+              System.out.print("\n  ");
+          if (i % 8 == 0)
+              System.out.print("    ");
+          System.out.print(" ");
+          System.out.print(String.format("%02x", copy.getByte(i)));
+      }
+      System.out.println();
+  }
+  
+  public static void dumpBytes(byte[] bytes) {
+      for (int i = 0; i < bytes.length; i++) {
+          if (i % 16 == 0)
+              System.out.print("\n  ");
+          if (i % 8 == 0)
+              System.out.print("    ");
+          System.out.print(" ");
+          System.out.print(String.format("%02x", bytes[i]));
+      }
+      System.out.println();
   }
 }

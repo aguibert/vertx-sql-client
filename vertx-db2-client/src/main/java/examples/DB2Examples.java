@@ -85,9 +85,14 @@ public class DB2Examples {
 //         });
         
         // A simple query
-        client.query("SELECT * FROM users WHERE id='andy'", ar -> {
+        client.query("SELECT * FROM users", ar -> {
+        //client.query("SELECT * FROM users WHERE id='andy'", ar -> {
+            System.out.println("INSIDE QUERY CLOSURE");
+            System.out.println("succeeded=" + ar.succeeded());
+            try {
           if (ar.succeeded()) {
             RowSet<Row> result = ar.result();
+            System.out.println("result=" + result);
             System.out.println("Got " + result.size() + " rows ");
           } else {
             System.out.println("Failure: " + ar.cause().getMessage());
@@ -95,6 +100,9 @@ public class DB2Examples {
 
           // Now close the pool
           client.close();
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
         });
         
     }

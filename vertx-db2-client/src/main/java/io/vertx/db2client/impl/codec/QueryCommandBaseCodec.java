@@ -17,6 +17,10 @@
 package io.vertx.db2client.impl.codec;
 
 import io.netty.buffer.ByteBuf;
+import io.vertx.db2client.impl.drda.CCSIDManager;
+import io.vertx.db2client.impl.drda.ColumnMetaData;
+import io.vertx.db2client.impl.drda.Cursor;
+import io.vertx.db2client.impl.drda.DRDAQueryResponse;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.impl.RowDesc;
 import io.vertx.sqlclient.impl.command.CommandResponse;
@@ -28,16 +32,13 @@ import java.util.stream.Collector;
 
 abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends CommandCodec<Boolean, C> {
 
-  private final DataFormat format;
-
 //  protected CommandHandlerState commandHandlerState = CommandHandlerState.INIT;
-  protected ColumnDefinition[] columnDefinitions;
-//  protected RowResultDecoder<?, T> decoder;
+  protected ColumnMetaData columnDefinitions;
+  protected RowResultDecoder<?, T> decoder;
   private int currentColumn;
 
-  QueryCommandBaseCodec(C cmd, DataFormat format) {
+  QueryCommandBaseCodec(C cmd) {
     super(cmd);
-    this.format = format;
   }
 
   private static <A, T> T emptyResult(Collector<Row, A, T> collector) {
@@ -46,8 +47,59 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
 
   @Override
   void decodePayload(ByteBuf payload, int payloadLength) {
+      try {
       System.out.println("@AGG decode QueryCommandBaseCodec");
-      CommandCodec.dumpBuffer(payload);
+      DB2Codec.dumpBuffer(payload);
+      DRDAQueryResponse resp = new DRDAQueryResponse(payload, new CCSIDManager());
+      resp.readPrepareDescribeOutput();
+      //resp.readOpenQuery();
+      resp.readBeginOpenQuery();
+      System.out.println("@AGG read query");
+      
+      columnDefinitions = resp.getColumnMetaData();
+      decoder = new RowResultDecoder<>(cmd.collector(), new DB2RowDesc(columnDefinitions), resp.getCursor(), resp);
+      System.out.println("@AGG done with everything");
+      
+//      decoder.handleRow(len, in);
+      while(resp.hasMoreRows())
+          decoder.handleRow(columnDefinitions.columns_, payload);
+      
+      int updatedCount = 0; // @AGG hardcoded
+      T result;
+      Throwable failure;
+      int size;
+      RowDesc rowDesc;
+      failure = decoder.complete();
+      result = decoder.result();
+      rowDesc = decoder.rowDesc;
+      size = decoder.size();
+      System.out.println("@AGG size=" + size);
+      decoder.reset();
+      
+      cmd.resultHandler().handleResult(updatedCount, size, rowDesc, result, failure);
+      
+      completionHandler.handle(CommandResponse.success(true));
+      } catch(Throwable t) {
+          t.printStackTrace();
+          completionHandler.handle(CommandResponse.failure(t));
+      }
+
+      // resultSet_ is null if open query failed.
+      // check for null resultSet_ before using it.
+      // the first rowset comes back on OPEN for static non-rowset cursors.
+      // no row is returned on open for rowset cursors.
+//      if (resultSet_ != null) {
+//          resultSet_.parseScrollableRowset();
+
+          // DERBY-1183: If we set it up it earlier, the entry in
+          // clientCursorNameCache_ gets wiped out by the closing of
+          // result sets happening during readCloseResultSets above
+          // because ResultSet#markClosed calls
+          // Statement#removeClientCursorNameFromCache.
+//          setupCursorNameCacheAndMappings();
+      
+      
+      
 //    switch (commandHandlerState) {
 //      case INIT:
 //        handleInitPacket(payload);

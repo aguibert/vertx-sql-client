@@ -6,7 +6,13 @@ public class CCSIDManager {
     
     public static final int TARGET_UNICODE_MGR = 0x04B8; // UTF-8
     
+    /**
+     * CCSID 1208 0x04B8
+     */
     public static final Charset EBCDIC = Charset.forName("CP1047");
+    /**
+     * CCSID 500 0x01F4
+     */
     public static final Charset UTF8 = Charset.forName("UTF-8");
     
     private Charset currentCCSID = EBCDIC;

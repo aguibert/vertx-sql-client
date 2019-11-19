@@ -1,5 +1,14 @@
 package io.vertx.db2client.impl.drda;
 
+/**
+ * A SQLCA stands for "SQL Communication Area"
+ * The primary purpose is for tracking the SQLCode.
+ * If the code is < 0, there is an error
+ * If the code is > 0, there is a warning
+ * If the code is == 0, nothing is wrong
+ * @author aguibert
+ *
+ */
 public class NetSqlca {
 
     // Indexes into sqlErrd_

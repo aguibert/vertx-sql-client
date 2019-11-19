@@ -33,7 +33,7 @@ class SimpleQueryCommandCodec<T> extends QueryCommandBaseCodec<T, SimpleQueryCom
     private final CCSIDManager ccsidManager = new CCSIDManager();
 
   SimpleQueryCommandCodec(SimpleQueryCommand<T> cmd) {
-    super(cmd, DataFormat.TEXT);
+    super(cmd);
   }
 
   @Override
@@ -90,7 +90,7 @@ class SimpleQueryCommandCodec<T> extends QueryCommandBaseCodec<T, SimpleQueryCom
     // OPNQRY
     queryCommand.writeOpenQuery(section, 
             "quark_db", 
-            0, // triggers default fetch size (64) to be used 
+            0, // triggers default fetch size (64) to be used @AGG this should be configurable
             ResultSet.TYPE_FORWARD_ONLY); // @AGG hard code to TYPE_FORWARD_ONLY
 
     sendPacket(packet, packet.writerIndex() - packetStartIdx);

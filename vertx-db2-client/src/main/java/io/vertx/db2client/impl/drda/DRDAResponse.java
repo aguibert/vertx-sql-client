@@ -1,11 +1,14 @@
 package io.vertx.db2client.impl.drda;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.sql.Connection;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
 import io.netty.buffer.ByteBuf;
+import io.vertx.db2client.impl.codec.DB2Codec;
 
 public abstract class DRDAResponse {
     
@@ -13,18 +16,16 @@ public abstract class DRDAResponse {
     final CCSIDManager ccsidManager;
 
     Deque<Integer> ddmCollectionLenStack = new ArrayDeque<>(4);
-    private int ddmScalarLen_ = 0; // a value of -1 -> streamed ddm -> length unknown
+    int ddmScalarLen_ = 0; // a value of -1 -> streamed ddm -> length unknown
 
     protected int dssLength_;
-    private boolean dssIsContinued_;
+    boolean dssIsContinued_;
     private boolean dssIsChainedWithSameID_;
     private int dssCorrelationID_ = 1;
 
     protected int peekedLength_ = 0;
-    private int peekedCodePoint_ = END_OF_COLLECTION; // saves the peeked codept
-    private int peekedNumOfExtendedLenBytes_ = 0;
-    private int currentPos_ = 0;
-//    private int pos_ = 0; // TODO: rename position fields
+    int peekedCodePoint_ = END_OF_COLLECTION; // saves the peeked codept
+    int peekedNumOfExtendedLenBytes_ = 0;
 
     final static int END_OF_COLLECTION = -1;
     final static int END_OF_SAME_ID_CHAIN = -2;
@@ -59,13 +60,729 @@ public abstract class DRDAResponse {
 //                new ClientMessageId(SQLState.NET_DSS_CHAINED_WITH_SAME_ID)));
         }
     }
+    
+    NetSqlca parseSQLCARD(NetSqlca[] rowsetSqlca) {
+        parseLengthAndMatchCodePoint(CodePoint.SQLCARD);
+        int ddmLength = getDdmLength();
+        ensureBLayerDataInBuffer(ddmLength);
+        NetSqlca netSqlca = parseSQLCARDrow(rowsetSqlca);
+        adjustLengths(getDdmLength());
+        return netSqlca;
+    }
+    
+    // SQLCAGRP : FDOCA EARLY GROUP
+    // SQL Communcations Area Group Description
+    // See DRDA V3 Vol 1 pg. 280
+    //
+    // FORMAT FOR SQLAM <= 6
+    //   SQLCODE; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLSTATE; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 5
+    //   SQLERRPROC; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 8
+    //   SQLCAXGRP; PROTOCOL TYPE N-GDA; ENVLID 0x52; Length Override 0
+    //
+    // FORMAT FOR SQLAM >= 7
+    //   SQLCODE; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLSTATE; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 5
+    //   SQLERRPROC; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 8
+    //   SQLCAXGRP; PROTOCOL TYPE N-GDA; ENVLID 0x52; Length Override 0
+    //   SQLDIAGGRP; PROTOCOL TYPE N-GDA; ENVLID 0x56; Length Override 0
+    NetSqlca parseSQLCAGRP(NetSqlca[] rowsetSqlca) {
+        if (readFastUnsignedByte() == CodePoint.NULLDATA) {
+            return null;
+        }
+
+        int sqlcode = readFastInt();
+        byte[] sqlstate = readFastBytes(5);
+        byte[] sqlerrproc = readFastBytes(8);
+        NetSqlca netSqlca = null;
+
+        netSqlca = new NetSqlca(sqlcode, sqlstate, sqlerrproc);
+        parseSQLCAXGRP(netSqlca);
+
+        if (DRDAConstants.TARGET_SQL_AM >= DRDAConstants.MGRLVL_7) {
+            netSqlca.setRowsetRowCount(parseSQLDIAGGRP(rowsetSqlca));
+        }
+
+        return netSqlca;
+    }
+    
+    // SQLDIAGGRP : FDOCA EARLY GROUP
+    // See DRDA V3 Vol 1 pg. 283
+    // SQL Diagnostics Group Description - Identity 0xD1
+    // Nullable Group
+    // SQLDIAGSTT; PROTOCOL TYPE N-GDA; ENVLID 0xD3; Length Override 0
+    // SQLDIAGCN;  DRFA TYPE N-RLO; ENVLID 0xF6; Length Override 0
+    // SQLDIAGCI;  PROTOCOL TYPE N-RLO; ENVLID 0xF5; Length Override 0
+    private long parseSQLDIAGGRP(NetSqlca[] rowsetSqlca) {
+        if (readFastUnsignedByte() == CodePoint.NULLDATA) {
+            return 0;
+        }
+
+        long row_count = parseSQLDIAGSTT(rowsetSqlca);
+        parseSQLDIAGCI(rowsetSqlca);
+        parseSQLDIAGCN();
+
+        return row_count;
+    }
+    
+    // SQL Diagnostics Connection Array - Identity 0xF6
+    // SQLNUMROW; ROW LID 0x68; ELEMENT TAKEN 0(all); REP FACTOR 1
+    // SQLCNROW;  ROW LID 0xE6; ELEMENT TAKEN 0(all); REP FACTOR 0(all)
+    private void parseSQLDIAGCN() {
+        if (readUnsignedByte() == CodePoint.NULLDATA) {
+            return;
+        }
+        int num = parseFastSQLNUMROW();
+        for (int i = 0; i < num; i++) {
+            parseSQLCNROW();
+        }
+    }
+    
+    // SQL Diagnostics Connection Row - Identity 0xE6
+    // SQLCNGRP; GROUP LID 0xD6; ELEMENT TAKEN 0(all); REP FACTOR 1
+    private void parseSQLCNROW() {
+        parseSQLCNGRP();
+    }
+    
+    // SQL Diagnostics Connection Group Description - Identity 0xD6
+    // Nullable
+    //
+    // SQLCNSTATE; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLCNSTATUS; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLCNATYPE; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLCNETYPE; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLCNPRDID; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 8
+    // SQLCNRDB; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 1024
+    // SQLCNCLASS; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255
+    // SQLCNAUTHID; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255
+    private void parseSQLCNGRP() {
+        skipBytes(18);
+        String sqlcnRDB = parseFastVCS();    // RDBNAM
+        String sqlcnClass = parseFastVCS();  // CLASS_NAME
+        String sqlcnAuthid = parseFastVCS(); // AUTHID
+    }
+    
+    // SQLNUMROW : FDOCA EARLY ROW
+    // SQL Number of Elements Row Description
+    //
+    // FORMAT FOR SQLAM LEVELS
+    //   SQLNUMGRP; GROUP LID 0x58; ELEMENT TAKEN 0(all); REP FACTOR 1
+    int parseSQLNUMROW() {
+        return parseSQLNUMGRP();
+    }
+
+    int parseFastSQLNUMROW() {
+        return parseFastSQLNUMGRP();
+    }
+
+    // SQLNUMGRP : FDOCA EARLY GROUP
+    // SQL Number of Elements Group Description
+    //
+    // FORMAT FOR ALL SQLAM LEVELS
+    //   SQLNUM; PROTOCOL TYPE I2; ENVLID 0x04; Length Override 2
+    private int parseSQLNUMGRP() {
+        return readShort();
+    }
+
+    private int parseFastSQLNUMGRP() {
+        return readFastShort();
+    }
+    
+    // SQL Diagnostics Statement Group Description - Identity 0xD3
+    // Nullable Group
+    // SQLDSFCOD; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDSCOST; PROTOCOL TYPE I4; ENVLID 0X02; Length Override 4
+    // SQLDSLROW; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDSNPM; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDSNRS; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDSRNS; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDSDCOD; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDSROWC; PROTOCOL TYPE FD; ENVLID 0x0E; Length Override 31
+    // SQLDSNROW; PROTOCOL TYPE FD; ENVLID 0x0E; Length Override 31
+    // SQLDSROWCS; PROTOCOL TYPE FD; ENVLID 0x0E; Length Override 31
+    // SQLDSACON; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLDSACRH; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLDSACRS; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLDSACSL; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLDSACSE; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLDSACTY; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLDSCERR; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    // SQLDSMORE; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    private long parseSQLDIAGSTT(NetSqlca[] rowsetSqlca) {
+        if (readFastUnsignedByte() == CodePoint.NULLDATA) {
+            return 0;
+        }
+        int sqldsFcod = readFastInt(); // FUNCTION_CODE
+        int sqldsCost = readFastInt(); // COST_ESTIMATE
+        int sqldsLrow = readFastInt(); // LAST_ROW
+
+        skipFastBytes(16);
+
+        long sqldsRowc = readFastLong(); // ROW_COUNT
+        System.out.println("@AGG row count: " + sqldsRowc);
+
+        skipFastBytes(24);
+
+        return sqldsRowc;
+    }
+    
+    // SQL Diagnostics Condition Information Array - Identity 0xF5
+    // SQLNUMROW; ROW LID 0x68; ELEMENT TAKEN 0(all); REP FACTOR 1
+    // SQLDCIROW; ROW LID 0xE5; ELEMENT TAKEN 0(all); REP FACTOR 0(all)
+    private void parseSQLDIAGCI(NetSqlca[] rowsetSqlca) {
+        if (readFastUnsignedByte() == CodePoint.NULLDATA) {
+            return;
+        }
+        int num = parseFastSQLNUMROW();
+        if (num == 0) {
+            resetRowsetSqlca(rowsetSqlca, 0);
+        }
+
+        // lastRow is the row number for the last row that had a non-null SQLCA.
+        int lastRow = 1;
+        for (int i = 0; i < num; i++) {
+            lastRow = parseSQLDCROW(rowsetSqlca, lastRow);
+        }
+        resetRowsetSqlca(rowsetSqlca, lastRow + 1);
+    }
+    
+    private void resetRowsetSqlca(NetSqlca[] rowsetSqlca, int row) {
+        // rowsetSqlca can be null.
+        int count = ((rowsetSqlca == null) ? 0 : rowsetSqlca.length);
+        for (int i = row; i < count; i++) {
+            rowsetSqlca[i] = null;
+        }
+    }
+    
+    // SQL Diagnostics Condition Row - Identity 0xE5
+    // SQLDCGRP; GROUP LID 0xD5; ELEMENT TAKEN 0(all); REP FACTOR 1
+    private int parseSQLDCROW(NetSqlca[] rowsetSqlca, int lastRow) {
+        return parseSQLDCGRP(rowsetSqlca, lastRow);
+    }
+    
+    // SQL Diagnostics Condition Group Description
+    //
+    // SQLDCCODE; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCSTATE; PROTOCOL TYPE FCS; ENVLID Ox30; Lengeh Override 5
+    // SQLDCREASON; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCLINEN; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCROWN; PROTOCOL TYPE FD; ENVLID 0x0E; Lengeh Override 31
+    // SQLDCER01; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCER02; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCER03; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCER04; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCPART; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCPPOP; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    // SQLDCMSGID; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 10
+    // SQLDCMDE; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 8
+    // SQLDCPMOD; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 5
+    // SQLDCRDB; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255
+    // SQLDCTOKS; PROTOCOL TYPE N-RLO; ENVLID 0xF7; Length Override 0
+    // SQLDCMSG_m; PROTOCOL TYPE NVMC; ENVLID 0x3F; Length Override 32672
+    // SQLDCMSG_S; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 32672
+    // SQLDCCOLN_m; PROTOCOL TYPE NVCM ; ENVLID 0x3F; Length Override 255
+    // SQLDCCOLN_s; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCCURN_m; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCCURN_s; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCPNAM_m; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCPNAM_s; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCXGRP; PROTOCOL TYPE N-GDA; ENVLID 0xD3; Length Override 1
+    private int parseSQLDCGRP(NetSqlca[] rowsetSqlca, int lastRow) {
+        int sqldcCode = readFastInt(); // SQLCODE
+        String sqldcState = readFastString(5, CCSIDManager.UTF8); // SQLSTATE
+        int sqldcReason = readFastInt();  // REASON_CODE
+        int sqldcLinen = readFastInt(); // LINE_NUMBER
+        int sqldcRown = (int) readFastLong(); // ROW_NUMBER
+
+        // save +20237 in the 0th entry of the rowsetSqlca's.
+        // this info is going to be used when a subsequent fetch prior is issued, and if already
+        // received a +20237 then we've gone beyond the first row and there is no need to
+        // flow another fetch to the server.
+        if (sqldcCode == 20237) {
+            rowsetSqlca[0] = new NetSqlca(sqldcCode,
+                    sqldcState,
+                    null);
+        } else {
+            if (rowsetSqlca[sqldcRown] != null) {
+                rowsetSqlca[sqldcRown].resetRowsetSqlca(sqldcCode,
+                        sqldcState);
+            } else {
+                rowsetSqlca[sqldcRown] = new NetSqlca(sqldcCode,
+                        sqldcState,
+                        null);
+            }
+        }
+
+        // reset all entries between lastRow and sqldcRown to null
+        for (int i = lastRow + 1; i < sqldcRown; i++) {
+            rowsetSqlca[i] = null;
+        }
+
+        skipFastBytes(47);
+        String sqldcRdb = parseFastVCS(); // RDBNAM
+        // skip the tokens for now, since we already have the complete message.
+        parseSQLDCTOKS(); // MESSAGE_TOKENS
+        String sqldcMsg = parseFastNVCMorNVCS(); // MESSAGE_TEXT
+
+        // skip the following for now.
+        skipFastNVCMorNVCS();  // COLUMN_NAME
+        skipFastNVCMorNVCS();  // PARAMETER_NAME
+        skipFastNVCMorNVCS();  // EXTENDED_NAMES
+
+        parseSQLDCXGRP(); // SQLDCXGRP
+        return sqldcRown;
+    }
+    
+    // @AGG this was originally on the connection class
+    void completeSqlca(NetSqlca sqlca) {
+        if (sqlca == null) {
+        } else if (sqlca.getSqlCode() > 0) {
+            System.out.println("[WARNING] Got SQLCode " + sqlca.getSqlCode());
+//            accumulateWarning(new SqlWarning(agent_.logWriter_, sqlca));
+        } else if (sqlca.getSqlCode() < 0) {
+            throw new IllegalStateException("Got sqlcode " + sqlca.getSqlCode());
+//            agent_.accumulateReadException(new SqlException(agent_.logWriter_, sqlca));
+        }
+    }
+    
+    // Severity Code is an indicator of the severity of a condition
+    // detected during the execution of a command.
+    int parseSVRCOD(int minSvrcod, int maxSvrcod) {
+        parseLengthAndMatchCodePoint(CodePoint.SVRCOD);
+
+        int svrcod = readUnsignedShort();
+        if ((svrcod != CodePoint.SVRCOD_INFO) &&
+                (svrcod != CodePoint.SVRCOD_WARNING) &&
+                (svrcod != CodePoint.SVRCOD_ERROR) &&
+                (svrcod != CodePoint.SVRCOD_SEVERE) &&
+                (svrcod != CodePoint.SVRCOD_ACCDMG) &&
+                (svrcod != CodePoint.SVRCOD_PRMDMG) &&
+                (svrcod != CodePoint.SVRCOD_SESDMG)) {
+            doValnsprmSemantics(CodePoint.SVRCOD, svrcod);
+        }
+
+        if (svrcod < minSvrcod || svrcod > maxSvrcod) {
+            doValnsprmSemantics(CodePoint.SVRCOD, svrcod);
+        }
+        
+        // @AGG remove this after fixing peekCP() ? 
+        //adjustLengths(2); // @AGG had to add this after debugging
+
+        return svrcod;
+    }
+    
+    // Also called by NetStatementReply
+    void doValnsprmSemantics(int codePoint, int value) {
+        doValnsprmSemantics(codePoint, Integer.toString(value));
+    }
+
+    private void doValnsprmSemantics(int codePoint, String value) {
+
+        // special case the FDODTA codepoint not to disconnect.
+        if (codePoint == CodePoint.FDODTA) {
+            throw new IllegalStateException("SQLState.DRDA_DDM_PARAMVAL_NOT_SUPPORTED codePoint=" + Integer.toHexString(codePoint));
+//            agent_.accumulateReadException(new SqlException(agent_.logWriter_,
+//                new ClientMessageId(SQLState.DRDA_DDM_PARAMVAL_NOT_SUPPORTED),
+//                Integer.toHexString(codePoint)));
+        }
+
+        if (codePoint == CodePoint.CCSIDSBC ||
+                codePoint == CodePoint.CCSIDDBC ||
+                codePoint == CodePoint.CCSIDMBC) {
+            // the server didn't like one of the ccsids.
+            // the message should reflect the error in question.  right now these values
+            // will be hard coded but this won't be correct if our driver starts sending
+            // other values to the server.  In order to pick up the correct values,
+            // a little reorganization may need to take place so that this code (or
+            // whatever code sets the message) has access to the correct values.
+            throw new IllegalStateException("SQLState.DRDA_NO_AVAIL_CODEPAGE_CONVERSION");
+//            int cpValue = 0;
+//            switch (codePoint) {
+//            case CodePoint.CCSIDSBC:
+//                cpValue = netAgent_.typdef_.getCcsidSbc();
+//                break;
+//            case CodePoint.CCSIDDBC:
+//                cpValue = netAgent_.typdef_.getCcsidDbc();
+//                break;
+//            case CodePoint.CCSIDMBC:
+//                cpValue = netAgent_.typdef_.getCcsidSbc();
+//                break;
+//            default:
+//                // should never be in this default case...
+//                break;
+//            }
+//            agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//                new ClientMessageId(SQLState.DRDA_NO_AVAIL_CODEPAGE_CONVERSION),
+//                cpValue, value));
+//            return;
+        }
+        // the problem isn't with one of the ccsid values so...
+
+        throw new IllegalStateException("SQLState.DRDA_DDM_PARAMVAL_NOT_SUPPORTED");
+        // Returning more information would
+        // require rearranging this code a little.
+//        agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//            new ClientMessageId(SQLState.DRDA_DDM_PARAMVAL_NOT_SUPPORTED),
+//            Integer.toHexString(codePoint)));
+    }
+    
+    // SQL Diagnostics Extended Names Group Description - Identity 0xD5
+    // Nullable
+    //
+    // SQLDCXRDB_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 1024
+    // SQLDCXSCH_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXNAM_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXTBLN_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXRDB_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 1024
+    // SQLDCXSCH_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCXNAM_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCXTBLN_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    //
+    // SQLDCXCRDB_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 1024
+    // SQLDCXCSCH_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXCNAM_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXCRDB_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 1024
+    // SQLDCXCSCH_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCXCNAM_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    //
+    // SQLDCXRRDB_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 1024
+    // SQLDCXRSCH_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXRNAM_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXRRDB_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 1024
+    // SQLDCXRSCH_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCXRNAM_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    //
+    // SQLDCXTRDB_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 1024
+    // SQLDCXTSCH_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXTNAM_m ; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
+    // SQLDCXTRDB_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 1024
+    // SQLDCXTSCH_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    // SQLDCXTNAM_s ; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
+    private void parseSQLDCXGRP() {
+        if (readFastUnsignedByte() == CodePoint.NULLDATA) {
+            return;
+        }
+        skipFastNVCMorNVCS();  // OBJECT_RDBNAM
+        skipFastNVCMorNVCS();  // OBJECT_SCHEMA
+        skipFastNVCMorNVCS();  // SPECIFIC_NAME
+        skipFastNVCMorNVCS();  // TABLE_NAME
+        String sqldcxCrdb = parseFastVCS();        // CONSTRAINT_RDBNAM
+        skipFastNVCMorNVCS();  // CONSTRAINT_SCHEMA
+        skipFastNVCMorNVCS();  // CONSTRAINT_NAME
+        parseFastVCS();        // ROUTINE_RDBNAM
+        skipFastNVCMorNVCS();  // ROUTINE_SCHEMA
+        skipFastNVCMorNVCS();  // ROUTINE_NAME
+        parseFastVCS();        // TRIGGER_RDBNAM
+        skipFastNVCMorNVCS();  // TRIGGER_SCHEMA
+        skipFastNVCMorNVCS();  // TRIGGER_NAME
+    }
+    
+    private String parseFastNVCMorNVCS() {
+        String stringToBeSet = null;
+        if (readFastUnsignedByte() != CodePoint.NULLDATA) {
+            int vcm_length = readFastUnsignedShort();
+            if (vcm_length > 0) {
+                stringToBeSet = readFastString(vcm_length, ccsidManager.getCCSID());//netAgent_.targetTypdef_.getCcsidMbcEncoding());
+            }
+            if (readFastUnsignedByte() != CodePoint.NULLDATA) {
+                throw new IllegalStateException("SQLState.NET_NVCM_NVCS_BOTH_NON_NULL");
+//                agent_.accumulateChainBreakingReadExceptionAndThrow(
+//                    new DisconnectException(agent_,
+//                        new ClientMessageId(
+//                            SQLState.NET_NVCM_NVCS_BOTH_NON_NULL)));
+            }
+        } else {
+            if (readFastUnsignedByte() != CodePoint.NULLDATA) {
+                int vcs_length = readFastUnsignedShort();
+                if (vcs_length > 0) {
+                    stringToBeSet = readFastString(vcs_length, ccsidManager.getCCSID());//netAgent_.targetTypdef_.getCcsidSbcEncoding());
+                }
+            }
+        }
+        return stringToBeSet;
+    }
+    
+    // SQL Diagnostics Condition Token Array - Identity 0xF7
+    // SQLNUMROW; ROW LID 0x68; ELEMENT TAKEN 0(all); REP FACTOR 1
+    // SQLTOKROW; ROW LID 0xE7; ELEMENT TAKEN 0(all); REP FACTOR 0(all)
+    private void parseSQLDCTOKS() {
+        if (readFastUnsignedByte() == CodePoint.NULLDATA) {
+            return;
+        }
+        int num = parseFastSQLNUMROW();
+        for (int i = 0; i < num; i++) {
+            parseSQLTOKROW();
+        }
+    }
+    
+    // SQL Diagnostics Token Row - Identity 0xE7
+    // SQLTOKGRP; GROUP LID 0xD7; ELEMENT TAKEN 0(all); REP FACTOR 1
+    private void parseSQLTOKROW() {
+        parseSQLTOKGRP();
+    }
+
+    // check on SQLTOKGRP format
+    private void parseSQLTOKGRP() {
+        skipFastNVCMorNVCS();
+    }
+    
+    private void skipFastNVCMorNVCS() {
+        if (readFastUnsignedByte() != CodePoint.NULLDATA) {
+            int vcm_length = readFastUnsignedShort();
+            if (vcm_length > 0)
+            //stringToBeSet = readString (vcm_length, netAgent_.targetTypdef_.getCcsidMbcEncoding());
+            {
+                skipFastBytes(vcm_length);
+            }
+            if (readFastUnsignedByte() != CodePoint.NULLDATA) {
+                throw new IllegalStateException("SQLState.NET_NVCM_NVCS_BOTH_NON_NULL");
+//                agent_.accumulateChainBreakingReadExceptionAndThrow(
+//                    new DisconnectException(agent_,
+//                        new ClientMessageId(
+//                            SQLState.NET_NVCM_NVCS_BOTH_NON_NULL)));
+            }
+        } else {
+            if (readFastUnsignedByte() != CodePoint.NULLDATA) {
+                int vcs_length = readFastUnsignedShort();
+                if (vcs_length > 0)
+                //stringToBeSet = readString (vcs_length, netAgent_.targetTypdef_.getCcsidSbcEncoding());
+                {
+                    skipFastBytes(vcs_length);
+                }
+            }
+        }
+    }
+    
+    // SQLCAXGRP : EARLY FDOCA GROUP
+    // SQL Communications Area Exceptions Group Description
+    // See DRDA V3 Vol 1 pg. 281
+    //
+    // FORMAT FOR SQLAM <= 6
+    //   SQLRDBNME; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 18
+    //   SQLERRD1; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD2; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD3; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD4; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD5; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD6; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLWARN0; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN1; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN2; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN3; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN4; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN5; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN6; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN7; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN8; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN9; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARNA; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLERRMSG_m; PROTOCOL TYPE VCM; ENVLID 0x3E; Length Override 70
+    //   SQLERRMSG_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 70
+    //
+    // FORMAT FOR SQLAM >= 7
+    //   SQLERRD1; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD2; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD3; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD4; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD5; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLERRD6; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    //   SQLWARN0; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN1; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN2; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN3; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN4; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN5; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN6; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN7; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN8; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARN9; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLWARNA; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+    //   SQLRDBNAME; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 1024
+    //   SQLERRMSG_m; PROTOCOL TYPE VCM; ENVLID 0x3E; Length Override 70
+    //   SQLERRMSG_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 70
+    private void parseSQLCAXGRP(NetSqlca netSqlca) {
+        if (readFastUnsignedByte() == CodePoint.NULLDATA) {
+            netSqlca.setContainsSqlcax(false);
+            return;
+        }
+        
+//        if (DRDAConstants.TARGET_SQL_AM < DRDAConstants.MGRLVL_7) {
+//            // skip over the rdbnam for now
+//            //   SQLRDBNME; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 18
+//            skipFastBytes(18);
+//        }
+        //   SQLERRD1 to SQLERRD6; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+        int[] sqlerrd = new int[ NetSqlca.SQL_ERR_LENGTH ];
+        readFastIntArray(sqlerrd);
+
+        //   SQLWARN0 to SQLWARNA; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 1
+        byte[] sqlwarn = readFastBytes(11);
+
+        if (DRDAConstants.TARGET_SQL_AM >= DRDAConstants.MGRLVL_7) {
+            // skip over the rdbnam for now
+            // SQLRDBNAME; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 1024
+            ccsidManager.setCCSID(CCSIDManager.UTF8); // @AGG forcing CCSID to UTF8
+            String rdbname = parseFastVCS();
+            ccsidManager.setCCSID(CCSIDManager.EBCDIC);
+            System.out.println("@AGG got rdb len=" + rdbname.length() + " str=" + rdbname);
+        }
 
 
+        int sqlerrmcCcsid;
+        byte[] sqlerrmc = readFastLDBytes();
+        if (sqlerrmc != null) {
+            sqlerrmcCcsid = ccsidManager.getCCSIDNumber();//  netAgent_.targetTypdef_.getCcsidMbc();
+            skipFastBytes(2);
+        } else {
+            sqlerrmc = readFastLDBytes();
+            sqlerrmcCcsid = ccsidManager.getCCSIDNumber(); //netAgent_.targetTypdef_.getCcsidSbc();
+        }
+        
+        netSqlca.setSqlerrd(sqlerrd);
+        netSqlca.setSqlwarnBytes(sqlwarn);
+        netSqlca.setSqlerrmcBytes(sqlerrmc); // sqlerrmc may be null
+    }
+    
+    // this is duplicated in parseColumnMetaData, but different
+    // DAGroup under NETColumnMetaData requires a lot more stuffs including
+    // precsion, scale and other stuffs
+    String parseFastVCMorVCS() {
+        String stringToBeSet = null;
 
+        int vcm_length = readFastUnsignedShort();
+        if (vcm_length > 0) {
+            //stringToBeSet = readFastString(vcm_length, netAgent_.targetTypdef_.getCcsidMbcEncoding());
+            stringToBeSet = readFastString(vcm_length, CCSIDManager.UTF8); // @AGG forcing UTF8
+        }
+        int vcs_length = readFastUnsignedShort();
+        if (vcm_length > 0 && vcs_length > 0) {
+            throw new IllegalStateException("SQLState.NET_VCM_VCS_LENGTHS_INVALID");
+//            agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//                new ClientMessageId(SQLState.NET_VCM_VCS_LENGTHS_INVALID)));
+        } else if (vcs_length > 0) {
+            //stringToBeSet = readFastString(vcs_length, netAgent_.targetTypdef_.getCcsidSbcEncoding());
+            stringToBeSet = readFastString(vcs_length, CCSIDManager.UTF8); // @AGG forcing UTF8
+        }
+
+        return stringToBeSet;
+    }
+    
+    // SQLCARD : FDOCA EARLY ROW
+    // SQL Communications Area Row Description
+    //
+    // FORMAT FOR ALL SQLAM LEVELS
+    //   SQLCAGRP; GROUP LID 0x54; ELEMENT TAKEN 0(all); REP FACTOR 1
+    NetSqlca parseSQLCARDrow(NetSqlca[] rowsetSqlca) {
+        return parseSQLCAGRP(rowsetSqlca);
+    }
+
+    int parseTypdefsOrMgrlvlovrs() {
+        boolean targetTypedefCloned = false;
+        while (true) {
+            int peekCP = peekCodePoint();
+            if (peekCP == CodePoint.TYPDEFNAM) {
+                if (!targetTypedefCloned) {
+                    //netAgent_.targetTypdef_ = (Typdef) netAgent_.targetTypdef_.clone(); @AGG not sure if used?
+                    targetTypedefCloned = true;
+                }
+                parseTYPDEFNAM();
+            } else if (peekCP == CodePoint.TYPDEFOVR) {
+                if (!targetTypedefCloned) {
+                    //netAgent_.targetTypdef_ = (Typdef) netAgent_.targetTypdef_.clone(); @AGG not sure if used?
+                    targetTypedefCloned = true;
+                }
+                parseTYPDEFOVR();
+            } else {
+                return peekCP;
+            }
+        }
+    }
+    
+    void parseTYPDEFNAM() {
+        parseLengthAndMatchCodePoint(CodePoint.TYPDEFNAM);
+        String typedef = readString();
+//        netAgent_.targetTypdef_.setTypdefnam(readString());
+    }
+    
+    void parseTYPDEFOVR() {
+        parseLengthAndMatchCodePoint(CodePoint.TYPDEFOVR);
+        pushLengthOnCollectionStack();
+        int peekCP = peekCodePoint();
+
+        while (peekCP != END_OF_COLLECTION) {
+
+            boolean foundInPass = false;
+
+            if (peekCP == CodePoint.CCSIDSBC) {
+                foundInPass = true;
+                int ccsid = parseCCSIDSBC();
+                //netAgent_.targetTypdef_.setCcsidSbc(parseCCSIDSBC());
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.CCSIDDBC) {
+                foundInPass = true;
+                int ccsid = parseCCSIDDBC();
+//                netAgent_.targetTypdef_.setCcsidDbc(parseCCSIDDBC());
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.CCSIDMBC) {
+                foundInPass = true;
+                int ccsid = parseCCSIDMBC();
+//                netAgent_.targetTypdef_.setCcsidMbc(parseCCSIDMBC());
+                peekCP = peekCodePoint();
+            }
+            
+            // @AGG added this block
+            if (peekCP == CodePoint.CCSIDXML) {
+                parseLengthAndMatchCodePoint(CodePoint.CCSIDXML);
+                readUnsignedShort();
+                peekCP = peekCodePoint();
+            }
+
+            if (!foundInPass) {
+                throwUnknownCodepoint(peekCP);
+                //doPrmnsprmSemantics(peekCP);
+            }
+
+        }
+        popCollectionStack();
+    }
+    
+    static void throwUnknownCodepoint(int codepoint) {
+        throw new IllegalStateException("Found unknown codepoint: 0x" + Integer.toHexString(codepoint));
+    }
+    
+    static void throwMissingRequiredCodepoint(String codepointStr, int expectedCodepoint) {
+        throw new IllegalStateException("Did not find required " + codepointStr + " (" + Integer.toHexString(expectedCodepoint) + ") codepoint");
+    }
+    
+    // CCSID for Single-Byte Characters specifies a coded character
+    // set identifier for single-byte characters.
+    private int parseCCSIDSBC() {
+        parseLengthAndMatchCodePoint(CodePoint.CCSIDSBC);
+        return readUnsignedShort();
+    }
+
+    // CCSID for Mixed-Byte Characters specifies a coded character
+    // set identifier for mixed-byte characters.
+    private int parseCCSIDMBC() {
+        parseLengthAndMatchCodePoint(CodePoint.CCSIDMBC);
+        return readUnsignedShort();
+    }
+
+    // CCSID for Double-Byte Characters specifies a coded character
+    // set identifier for double-byte characters.
+    private int parseCCSIDDBC() {
+        parseLengthAndMatchCodePoint(CodePoint.CCSIDDBC);
+        return readUnsignedShort();
+    }
+    
     private void readDssHeader() {
         int correlationID;
         int nextCorrelationID;
-        // ensureALayerDataInBuffer(6); TODO @AGG do we need to ensure data is readable?
+        ensureALayerDataInBuffer(6);
 
         // read out the dss length
         dssLength_ = buffer.readShort();
@@ -82,7 +799,7 @@ public abstract class DRDAResponse {
         }
 
         if (dssLength_ < 6) {
-            throw new UnsupportedOperationException();
+            throw new IllegalStateException("DSS header length must be at least 6 bytes but was: " + dssLength_);
             // doSyntaxrmSemantics(CodePoint.SYNERRCD_DSS_LESS_THAN_6);
         }
 
@@ -150,6 +867,33 @@ public abstract class DRDAResponse {
         // piece by piece doesn't work.
     }
     
+    // reads a DSS continuation header
+    // prereq: pos_ is positioned on the first byte of the two-byte header
+    // post:   dssIsContinued_ is set to true if the continuation bit is on, false otherwise
+    //         dssLength_ is set to DssConstants.MAX_DSS_LEN - 2 (don't count the header for the next read)
+    // helper method for getEXTDTAData
+    void readDSSContinuationHeader() {
+        ensureALayerDataInBuffer(2);
+
+        dssLength_ = buffer.readShort();
+//                ((buffer_[pos_++] & 0xFF) << 8) +
+//                ((buffer_[pos_++] & 0xFF) << 0);
+
+        if ((dssLength_ & 0x8000) == 0x8000) {
+            dssLength_ = DssConstants.MAX_DSS_LENGTH;
+            dssIsContinued_ = true;
+        } else {
+            dssIsContinued_ = false;
+        }
+        // it is a syntax error if the dss continuation header length
+        // is less than or equal to two
+        if (dssLength_ <= 2) {
+            doSyntaxrmSemantics(CodePoint.SYNERRCD_DSS_CONT_LESS_OR_EQUAL_2);
+        }
+
+        dssLength_ -= 2;  // avoid consuming the DSS cont header
+    }
+    
     final String readString() {
         int len = ddmScalarLen_;
         ensureBLayerDataInBuffer(len);
@@ -178,8 +922,7 @@ public abstract class DRDAResponse {
 //        short s = SignedBinary.getShort(buffer_, pos_);
 
         //pos_ += 2;
-
-        return buffer.readShort();
+        return buffer.readShortLE();
     }
 
     boolean checkAndGetReceivedFlag(boolean receivedFlag){
@@ -475,7 +1218,7 @@ public abstract class DRDAResponse {
     // precsion, scale and other stuffs
     String parseFastVCS() {
         // doublecheck what readString() does if the length is 0
-        return readFastString(readFastUnsignedShort(), ccsidManager.getCCSID());
+        return readFastString(readFastUnsignedShort(), CCSIDManager.UTF8); // @AGG forcing UTF8
 //                netAgent_.targetTypdef_.getCcsidSbcEncoding());
     }
 
@@ -512,7 +1255,7 @@ public abstract class DRDAResponse {
     
     final void readFastIntArray(int[] array) {
         for (int i = 0; i < array.length; i++) {
-            array[i] = buffer.readInt(); //SignedBinary.getInt(buffer_, pos_);
+            array[i] = buffer.readIntLE(); //SignedBinary.getInt(buffer_, pos_);
             //pos_ += 4;
         }
     }
@@ -525,7 +1268,7 @@ public abstract class DRDAResponse {
 
     final short readFastShort() {
         //pos_ += 2;
-        return buffer.readShort();
+        return buffer.readShortLE();
 //        short s = SignedBinary.getShort(buffer_, pos_);
 //        return s;
     }
@@ -533,7 +1276,7 @@ public abstract class DRDAResponse {
     final long readFastLong() {
 //        long l = SignedBinary.getLong(buffer_, pos_);
         //pos_ += 8;
-        return buffer.readLong();
+        return buffer.readLongLE();
     }
 
     final int readFastUnsignedShort() {
@@ -546,7 +1289,7 @@ public abstract class DRDAResponse {
     final int readFastInt() {
 //        int i = SignedBinary.getInt(buffer_, pos_);
         //pos_ += 4;
-        return buffer.readInt();
+        return buffer.readIntLE();
     }
 
     final String readFastString(int length) {
@@ -565,7 +1308,6 @@ public abstract class DRDAResponse {
     }
     
     final byte[] readFastLDBytes() {
-        //buffer.skipBytes(1); // @AGG skipping 1 byte based on pos++
         int len = buffer.readShort();
 //        int len = ((buffer_[pos_++] & 0xff) << 8) + ((buffer_[pos_++] & 0xff) << 0);
         if (len == 0) {
@@ -589,7 +1331,8 @@ public abstract class DRDAResponse {
     void ensureALayerDataInBuffer(int desiredDataSize) {
         if (buffer.readableBytes() < desiredDataSize) {
             throw new IllegalStateException(
-                    "Needed to have " + desiredDataSize + " in buffer but only had " + buffer.readableBytes());
+                    "Needed to have " + desiredDataSize + " in buffer but only had " + buffer.readableBytes() + 
+                    ". In JDBC we would normally block here but need to find a non-blocking solution");
         }
     }
 
