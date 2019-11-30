@@ -61,10 +61,9 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
       System.out.println("@AGG done with everything");
       
 //      decoder.handleRow(len, in);
-      while(resp.hasMoreRows())
-          decoder.handleRow(columnDefinitions.columns_, payload);
+      decoder.handleRow(columnDefinitions.columns_, payload);
       
-      int updatedCount = 0; // @AGG hardcoded
+      int updatedCount = 0; // @AGG hardcoded to 0
       T result;
       Throwable failure;
       int size;

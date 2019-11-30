@@ -118,7 +118,7 @@ public class Cursor {
 //    NetResultSet netResultSet_;
 //    private NetAgent netAgent_;
 
-//    Typdef qrydscTypdef_;
+    Typdef qrydscTypdef_;
 
     int maximumRowSize_ = 0;
     boolean blocking_;  // if true, multiple rows may be "blocked" in a single reply
@@ -162,6 +162,7 @@ public class Cursor {
     //---------------------constructors/finalizer---------------------------------
 
     public void setNumberOfColumns(int numberOfColumns) {
+        System.out.println("@AGG set columns=" + numberOfColumns);
         columnDataPosition_ = new int[numberOfColumns];
         columnDataComputedLength_ = new int[numberOfColumns];
 
@@ -184,7 +185,7 @@ public class Cursor {
      * @return {@code true} if current row position is valid
      * @exception SQLException if an error occurs
      */
-    protected boolean stepNext(boolean allowServerFetch) throws SQLException {
+    protected boolean stepNext(boolean allowServerFetch) {
         // reset lob data
         // clears out Cursor.lobs_ calculated for the current row when cursor is moved.
         clearLobData_();
@@ -210,8 +211,7 @@ public class Cursor {
         // The parameter passed in here is used as an index into the cached rowset for
         // scrollable cursors, for the arrays to be reused.  It is not used for forward-only
         // cursors, so just pass in 0.
-        boolean rowPositionIsValid =
-            calculateColumnOffsetsForRow_(0, allowServerFetch);
+        boolean rowPositionIsValid = calculateColumnOffsetsForRow_(0, allowServerFetch);
         markNextRowPosition();
         return rowPositionIsValid;
     }
@@ -415,7 +415,7 @@ public class Cursor {
     // For 2-byte character ccsids, length is the number of characters,
     // for all other cases length is the number of bytes.
     // The length does not include the null terminator.
-    private String getVARCHAR(int column) throws SQLException {
+    private String getVARCHAR(int column) {
         if (ccsid_[column - 1] == 1200) {
             return getStringWithoutConvert(columnDataPosition_[column - 1] + 2,
                     columnDataComputedLength_[column - 1] - 2);
@@ -427,7 +427,7 @@ public class Cursor {
         // cursor is only required for types which can have mixed or double
         // byte ccsids.
         if (charset_[column - 1] == null) {
-            throw new SQLException("SQLState.CHARACTER_CONVERTER_NOT_AVAILABLE");
+            throw new IllegalStateException("SQLState.CHARACTER_CONVERTER_NOT_AVAILABLE");
         }
 
         dataBuffer_.readerIndex(columnDataPosition_[column - 1] + 2);
@@ -442,7 +442,7 @@ public class Cursor {
     }
 
     // Build a Java String from a database CHAR field.
-    private String getCHAR(int column) throws SQLException {
+    private String getCHAR(int column) {
         if (ccsid_[column - 1] == 1200) {
             return getStringWithoutConvert(columnDataPosition_[column - 1], columnDataComputedLength_[column - 1]);
         }
@@ -453,7 +453,7 @@ public class Cursor {
         // cursor is only required for types which can have mixed or double
         // byte ccsids.
         if (charset_[column - 1] == null) {
-            throw new SQLException("SQLState.CHARACTER_CONVERTER_NOT_AVAILABLE");
+            throw new IllegalStateException("SQLState.CHARACTER_CONVERTER_NOT_AVAILABLE");
         }
 
         dataBuffer_.readerIndex(columnDataPosition_[column - 1] + 2);
@@ -546,7 +546,7 @@ public class Cursor {
 
     // Extract bytes from a database Types.BINARY field.
     // This is the DERBY type CHAR(n) FOR BIT DATA.
-    private byte[] get_CHAR_FOR_BIT_DATA(int column) throws SQLException {
+    private byte[] get_CHAR_FOR_BIT_DATA(int column) {
         // There is no limit to the size of a column if maxFieldSize is zero.
         // Otherwise, use the smaller of maxFieldSize and the actual column length.
         int columnLength = (maxFieldSize_ == 0) ? columnDataComputedLength_[column - 1] :
@@ -561,7 +561,7 @@ public class Cursor {
     // This includes the DERBY types:
     //   VARCHAR(n) FOR BIT DATA
     //   LONG VARCHAR(n) FOR BIT DATA
-    private byte[] get_VARCHAR_FOR_BIT_DATA(int column) throws SQLException {
+    private byte[] get_VARCHAR_FOR_BIT_DATA(int column) {
         byte[] bytes;
         int columnLength =
             (maxFieldSize_ == 0) ? columnDataComputedLength_[column - 1] - 2 :
@@ -903,75 +903,72 @@ public class Cursor {
 //        }
 //    }
 //
-//    final String getString(int column) throws SQLException {
-//        try {
-//            String tempString;
-//            switch (jdbcTypes_[column - 1]) {
-//            case Types.BOOLEAN:
-//                if ( get_BOOLEAN( column ) ) { return Boolean.TRUE.toString(); }
-//                else { return Boolean.FALSE.toString(); }
-//            case Types.CHAR:
-//                return getCHAR(column);
-//            case Types.VARCHAR:
-//            case Types.LONGVARCHAR:
-//                return getVARCHAR(column);
-//
-//            case Types.SMALLINT:
-//                return String.valueOf(get_SMALLINT(column));
-//            case Types.INTEGER:
-//                return String.valueOf(get_INTEGER(column));
-//            case Types.BIGINT:
-//                return String.valueOf(get_BIGINT(column));
-//            case Types.REAL:
-//                return String.valueOf(get_FLOAT(column));
-//            case Types.DOUBLE:
-//                return String.valueOf(get_DOUBLE(column));
-//            case Types.DECIMAL:
+    public final String getString(int column) {
+            String tempString;
+            switch (jdbcTypes_[column - 1]) {
+            case Types.BOOLEAN:
+                if (get_BOOLEAN(column)) {
+                    return Boolean.TRUE.toString();
+                } else {
+                    return Boolean.FALSE.toString();
+                }
+            case Types.CHAR:
+                return getCHAR(column);
+            case Types.VARCHAR:
+            case Types.LONGVARCHAR:
+                return getVARCHAR(column);
+
+            case Types.SMALLINT:
+                return String.valueOf(get_SMALLINT(column));
+            case Types.INTEGER:
+                return String.valueOf(get_INTEGER(column));
+            case Types.BIGINT:
+                return String.valueOf(get_BIGINT(column));
+            case Types.REAL:
+                return String.valueOf(get_FLOAT(column));
+            case Types.DOUBLE:
+                return String.valueOf(get_DOUBLE(column));
+            case Types.DECIMAL:
 //                // We could get better performance here if we didn't materialize the BigDecimal,
 //                // but converted directly from decimal bytes to a string.
 //                return String.valueOf(get_DECIMAL(column));
-//            case Types.DATE:
+            case Types.DATE:
 //                return getStringFromDATE(column);
-//            case Types.TIME:
+            case Types.TIME:
 //                return getStringFromTIME(column);
-//            case Types.TIMESTAMP:
+            case Types.TIMESTAMP:
 //                return getStringFromTIMESTAMP(column);
-//            case ClientTypes.BINARY:
-//                tempString =
-//                        agent_.crossConverters_.getStringFromBytes(get_CHAR_FOR_BIT_DATA(column));
-//                return (maxFieldSize_ == 0) ? tempString :
-//                        tempString.substring(0, Math.min(maxFieldSize_,
-//                                                         tempString.length()));
-//            case Types.VARBINARY:
-//            case Types.LONGVARBINARY:
-//                tempString =
-//                        agent_.crossConverters_.getStringFromBytes(get_VARCHAR_FOR_BIT_DATA(column));
-//                return (maxFieldSize_ == 0) ? tempString :
-//                        tempString.substring(0, Math.min(maxFieldSize_,
-//                                                         tempString.length()));
-//            case Types.JAVA_OBJECT:
-//                Object obj = get_UDT( column );
-//                if ( obj == null ) { return null; }
-//                else { return obj.toString(); }
-//            case Types.BLOB:
+            case ClientTypes.BINARY:
+//                tempString = agent_.crossConverters_.getStringFromBytes(get_CHAR_FOR_BIT_DATA(column));
+//                return (maxFieldSize_ == 0) ? tempString
+//                        : tempString.substring(0, Math.min(maxFieldSize_, tempString.length()));
+            case Types.VARBINARY:
+            case Types.LONGVARBINARY:
+//                tempString = agent_.crossConverters_.getStringFromBytes(get_VARCHAR_FOR_BIT_DATA(column));
+//                return (maxFieldSize_ == 0) ? tempString
+//                        : tempString.substring(0, Math.min(maxFieldSize_, tempString.length()));
+            case Types.JAVA_OBJECT:
+//                Object obj = get_UDT(column);
+//                if (obj == null) {
+//                    return null;
+//                } else {
+//                    return obj.toString();
+//                }
+            case Types.BLOB:
 //                ClientBlob b = getBlobColumn_(column, agent_, false);
-//                tempString = agent_.crossConverters_.
-//                        getStringFromBytes(b.getBytes(1, (int) b.length()));
+//                tempString = agent_.crossConverters_.getStringFromBytes(b.getBytes(1, (int) b.length()));
 //                return tempString;
-//            case Types.CLOB:
+            case Types.CLOB:
 //                ClientClob c = getClobColumn_(column, agent_, false);
 //                tempString = c.getSubString(1, (int) c.length());
 //                return tempString;
-//            default:
-//                throw coercionError( "String", column );
-//            }
-//        } catch ( SQLException se ) {
-//            throw new SQLException(se);
-//        }
-//    }
+                throw new UnsupportedOperationException();
+            default:
+                throw coercionError("String", column);
+            }
+    }
 
-    final byte[] getBytes(int column) throws SQLException {
-        try {
+    final byte[] getBytes(int column) {
             switch (jdbcTypes_[column - 1]) {
             case Types.BINARY:
                 return get_CHAR_FOR_BIT_DATA(column);
@@ -979,18 +976,16 @@ public class Cursor {
             case Types.LONGVARBINARY:
                 return get_VARCHAR_FOR_BIT_DATA(column);
             case Types.BLOB:
-                ClientBlob b = getBlobColumn_(column, agent_, false);
-                byte[] bytes = b.getBytes(1, (int) b.length());
-                return bytes;
+                throw new UnsupportedOperationException();
+//                ClientBlob b = getBlobColumn_(column, agent_, false);
+//                byte[] bytes = b.getBytes(1, (int) b.length());
+//                return bytes;
             default:
                 throw coercionError( "byte[]", column );
             }
-        } catch ( SQLException se ) {
-            throw new SQLException(se);
-        }
     }
 
-    final InputStream getBinaryStream(int column) throws SQLException
+    final InputStream getBinaryStream(int column)
     {
         switch (jdbcTypes_[column - 1]) {
             case Types.BINARY:
@@ -1000,31 +995,33 @@ public class Cursor {
                 return
                     new ByteArrayInputStream(get_VARCHAR_FOR_BIT_DATA(column));
             case Types.BLOB:
-                ClientBlob b = getBlobColumn_(column, agent_, false);
-                if (b.isLocator()) {
-                    BlobLocatorInputStream is 
-                            = new BlobLocatorInputStream(agent_.connection_, b);
-                    return new BufferedInputStream(is);
-                } else {
-                    return b.getBinaryStreamX();
-                }
+                throw new UnsupportedOperationException();
+//                ClientBlob b = getBlobColumn_(column, agent_, false);
+//                if (b.isLocator()) {
+//                    BlobLocatorInputStream is 
+//                            = new BlobLocatorInputStream(agent_.connection_, b);
+//                    return new BufferedInputStream(is);
+//                } else {
+//                    return b.getBinaryStreamX();
+//                }
             default:
                 throw coercionError( "java.io.InputStream", column );
         }
     }
 
-    final InputStream getAsciiStream(int column) throws SQLException
+    final InputStream getAsciiStream(int column)
     {
         switch (jdbcTypes_[column - 1]) {
             case Types.CLOB:
-                ClientClob c = getClobColumn_(column, agent_, false);
-                if (c.isLocator()) {
-                    ClobLocatorInputStream is 
-                            = new ClobLocatorInputStream(agent_.connection_, c);
-                    return new BufferedInputStream(is);
-                } else {
-                    return c.getAsciiStreamX();
-                }
+                throw new UnsupportedOperationException();
+//                ClientClob c = getClobColumn_(column, agent_, false);
+//                if (c.isLocator()) {
+//                    ClobLocatorInputStream is 
+//                            = new ClobLocatorInputStream(agent_.connection_, c);
+//                    return new BufferedInputStream(is);
+//                } else {
+//                    return c.getAsciiStreamX();
+//                }
             case Types.CHAR:
                 return new ByteArrayInputStream(
                         getCHAR(column).getBytes(ISO_8859_1));
@@ -1050,14 +1047,15 @@ public class Cursor {
     {
         switch (jdbcTypes_[column - 1]) {
             case Types.CLOB:
-                ClientClob c = getClobColumn_(column, agent_, false);
-                if (c.isLocator()) {
-                    ClobLocatorReader reader
-                            = new ClobLocatorReader(agent_.connection_, c);
-                    return new BufferedReader(reader);
-                } else {
-                    return c.getCharacterStreamX();
-                }
+                throw new UnsupportedOperationException();
+//                ClientClob c = getClobColumn_(column, agent_, false);
+//                if (c.isLocator()) {
+//                    ClobLocatorReader reader
+//                            = new ClobLocatorReader(agent_.connection_, c);
+//                    return new BufferedReader(reader);
+//                } else {
+//                    return c.getCharacterStreamX();
+//                }
             case Types.CHAR:
                 return new StringReader(getCHAR(column));
             case Types.VARCHAR:
@@ -1079,34 +1077,36 @@ public class Cursor {
             }
     }
 
-    final Blob getBlob(int column) throws SQLException {
-        switch (jdbcTypes_[column - 1]) {
-        case ClientTypes.BLOB:
-            return getBlobColumn_(column, agent_, true);
-        default:
-            throw coercionError( "java.sql.Blob", column );
-        }
+    final Blob getBlob(int column) {
+        throw new UnsupportedOperationException();
+//        switch (jdbcTypes_[column - 1]) {
+//        case ClientTypes.BLOB:
+//            return getBlobColumn_(column, agent_, true);
+//        default:
+//            throw coercionError( "java.sql.Blob", column );
+//        }
     }
 
-    final Clob getClob(int column) throws SQLException {
-        switch (jdbcTypes_[column - 1]) {
-        case ClientTypes.CLOB:
-            return getClobColumn_(column, agent_, true);
-        default:
-            throw coercionError( "java.sql.Clob", column );
-        }
+    final Clob getClob(int column) {
+        throw new UnsupportedOperationException();
+//        switch (jdbcTypes_[column - 1]) {
+//        case ClientTypes.CLOB:
+//            return getClobColumn_(column, agent_, true);
+//        default:
+//            throw coercionError( "java.sql.Clob", column );
+//        }
     }
 
-    final Array getArray(int column) throws SQLException {
-        throw new SQLException(agent_.logWriter_, 
-            new ClientMessageId (SQLState.NOT_IMPLEMENTED),
-            "getArray(int)");
-    }
-
-    final Ref getRef(int column) throws SQLException {
-        throw new SQLException(agent_.logWriter_, 
-            new ClientMessageId (SQLState.NOT_IMPLEMENTED), "getRef(int)");
-    }
+//    final Array getArray(int column) throws SQLException {
+//        throw new SQLException(agent_.logWriter_, 
+//            new ClientMessageId (SQLState.NOT_IMPLEMENTED),
+//            "getArray(int)");
+//    }
+//
+//    final Ref getRef(int column) throws SQLException {
+//        throw new SQLException(agent_.logWriter_, 
+//            new ClientMessageId (SQLState.NOT_IMPLEMENTED), "getRef(int)");
+//    }
 
     final Object getObject(int column) throws SQLException {
         switch (jdbcTypes_[column - 1]) {
@@ -1123,14 +1123,14 @@ public class Cursor {
             return get_FLOAT(column);
         case Types.DOUBLE:
             return get_DOUBLE(column);
-        case Types.DECIMAL:
-            return get_DECIMAL(column);
-        case Types.DATE:
-            return getDATE(column, getRecyclableCalendar());
-        case Types.TIME:
-            return getTIME(column, getRecyclableCalendar());
-        case Types.TIMESTAMP:
-            return getTIMESTAMP(column, getRecyclableCalendar());
+//        case Types.DECIMAL:
+//            return get_DECIMAL(column);
+//        case Types.DATE:
+//            return getDATE(column, getRecyclableCalendar());
+//        case Types.TIME:
+//            return getTIME(column, getRecyclableCalendar());
+//        case Types.TIMESTAMP:
+//            return getTIMESTAMP(column, getRecyclableCalendar());
         case Types.CHAR:
             return getCHAR(column);
         case Types.VARCHAR:
@@ -1143,10 +1143,10 @@ public class Cursor {
             return get_VARCHAR_FOR_BIT_DATA(column);
         case Types.JAVA_OBJECT:
             return get_UDT( column );
-        case Types.BLOB:
-            return getBlobColumn_(column, agent_, true);
-        case Types.CLOB:
-            return getClobColumn_(column, agent_, true);
+//        case Types.BLOB:
+//            return getBlobColumn_(column, agent_, true);
+//        case Types.CLOB:
+//            return getClobColumn_(column, agent_, true);
         default:
             throw coercionError( "Object", column );
         }
@@ -1176,20 +1176,21 @@ public class Cursor {
 
         int charCount = 0;
         while (start < end) {
-            charBuffer_[charCount++] = (char) (((dataBuffer_[start] & 0xff) << 8) | (dataBuffer_[start + 1] & 0xff));
+            charBuffer_[charCount++] = dataBuffer_.getChar(start);
+            //charBuffer_[charCount++] = (char) (((dataBuffer_[start] & 0xff) << 8) | (dataBuffer_[start + 1] & 0xff));
             start += 2;
         }
 
         return new String(charBuffer_, 0, charCount);
     }
 
-    private ColumnTypeConversionException coercionError
+    //private ColumnTypeConversionException coercionError
+    private IllegalStateException coercionError
         ( String targetType, int sourceColumn )
     {
-        return new ColumnTypeConversionException
-            (agent_.logWriter_,
-             targetType,
-             ClientTypes.getTypeString(jdbcTypes_[sourceColumn -1]));
+        return new IllegalStateException("Unknown target type for " + targetType + 
+                ClientTypes.getTypeString(jdbcTypes_[sourceColumn -1]) +
+                " value=" + jdbcTypes_[sourceColumn -1]);
     }
 
     private int getColumnPrecision(int column) {
@@ -1237,7 +1238,6 @@ public class Cursor {
     protected
         boolean calculateColumnOffsetsForRow_(int rowIndex,
                                               boolean allowServerFetch)
-        throws SQLException
     {
         int daNullIndicator = CodePoint.NULLDATA;
         int colNullIndicator = CodePoint.NULLDATA;
@@ -1249,10 +1249,11 @@ public class Cursor {
         boolean receivedDeleteHoleWarning = false;
         boolean receivedRowUpdatedWarning = false;
 
-        if ((position_ == lastValidBytePosition_) &&
-                (netResultSet_ != null) && (netResultSet_.scrollable_)) {
-            return false;
-        }
+        // @AGG assume NOT scrollable
+//        if ((position_ == lastValidBytePosition_) &&
+//                (netResultSet_ != null) && (netResultSet_.scrollable_)) {
+//            return false;
+//        }
 
         if (hasLobs_) {
             extdtaPositions_.clear();  // reset positions for this row
@@ -1269,23 +1270,24 @@ public class Cursor {
             for (int i=0;i<netSqlca.length; i++) {
                 int sqlcode = netSqlca[i].getSqlCode();
                 if (sqlcode < 0) {
-                    throw new SQLException(netAgent_.logWriter_, 
-                            netSqlca[i]);
+                    throw new IllegalStateException(//netAgent_.logWriter_, 
+                            netSqlca[i].toString());
                 } else {
                     if (sqlcode == SqlCode.END_OF_DATA.getCode()) {
                         setAllRowsReceivedFromServer(true);
-                        if (netResultSet_ != null && 
+                        if (//netResultSet_ != null && 
                                 netSqlca[i].containsSqlcax()) {
-                            netResultSet_.setRowCountEvent(
-                                    netSqlca[i].getRowCount());
+                            throw new UnsupportedOperationException();
+//                            netResultSet_.setRowCountEvent(
+//                                    netSqlca[i].getRowCount());
                         }
-                    } else if (netResultSet_ != null && sqlcode > 0) {
+                    } else if (/*netResultSet_ != null && */ sqlcode > 0) {
                         String sqlState = netSqlca[i].getSqlState();
                         if (!sqlState.equals(SQLState.ROW_DELETED) && 
                                 !sqlState.equals(SQLState.ROW_UPDATED)) {
-                            netResultSet_.accumulateWarning(
-                                    new SqlWarning(agent_.logWriter_, 
-                                        netSqlca[i]));
+//                            netResultSet_.accumulateWarning(
+//                                    new SqlWarning(agent_.logWriter_, 
+//                                        netSqlca[i]));
                         } else {
                             receivedDeleteHoleWarning 
                                     |= sqlState.equals(SQLState.ROW_DELETED);
@@ -1315,7 +1317,8 @@ public class Cursor {
         // not change again from this point.
 
         if (allRowsReceivedFromServer() &&
-            (position_ == lastValidBytePosition_)) {
+            //(position_ == lastValidBytePosition_)) {
+            (dataBuffer_.readerIndex() == lastValidBytePosition_)) {
             markNextRowPosition();
             makeNextRowPositionCurrent();
             return false;
@@ -1324,22 +1327,20 @@ public class Cursor {
         // If data flows....
         if (daNullIndicator == 0x0) {
 
-        if (SanityManager.DEBUG && receivedDeleteHoleWarning) {
-        SanityManager.THROWASSERT("Delete hole warning received: nulldata expected");
-        }
             incrementRowsReadEvent();
 
             // netResultSet_ is null if this method is invoked from Lob.position()
             // If row has exceeded the size of the ArrayList, new up a new int[] and add it to the
             // ArrayList, otherwise just reuse the int[].
-            if (netResultSet_ != null && netResultSet_.scrollable_) {
-                columnDataPosition = allocateColumnDataPositionArray(rowIndex);
-                columnDataComputedLength = allocateColumnDataComputedLengthArray(rowIndex);
-                columnDataIsNull = allocateColumnDataIsNullArray(rowIndex);
-                // Since we are no longer setting the int[]'s to null for a delete/update hole, we need
-                // another way of keeping track of the delete/update holes.
-                setIsUpdataDeleteHole(rowIndex, false);
-            } else {
+            // @AGG assume NOT scrollable
+//            if (netResultSet_ != null && netResultSet_.scrollable_) {
+//                columnDataPosition = allocateColumnDataPositionArray(rowIndex);
+//                columnDataComputedLength = allocateColumnDataComputedLengthArray(rowIndex);
+//                columnDataIsNull = allocateColumnDataIsNullArray(rowIndex);
+//                // Since we are no longer setting the int[]'s to null for a delete/update hole, we need
+//                // another way of keeping track of the delete/update holes.
+//                setIsUpdataDeleteHole(rowIndex, false);
+//            } else {
                 // Use the arrays defined on the Cursor for forward-only cursors.
                 // can they ever be null
                 if (columnDataPosition_ == null || columnDataComputedLength_ == null || isNull_ == null) {
@@ -1348,7 +1349,7 @@ public class Cursor {
                 columnDataPosition = columnDataPosition_;
                 columnDataComputedLength = columnDataComputedLength_;
                 columnDataIsNull = isNull_;
-            }
+//            }
 
             // Loop through the columns
             for (int index = 0; index < columns_; index++) {
@@ -1373,7 +1374,7 @@ public class Cursor {
                     switch (typeToUseForComputingDataLength_[index]) {
                     // for fixed length data
                     case Typdef.FIXEDLENGTH:
-                        columnDataPosition[index] = position_;
+                        columnDataPosition[index] = dataBuffer_.readerIndex();
                         if (isGraphic_[index]) {
                             columnDataComputedLength[index] = skipFdocaBytes(fdocaLength_[index] * 2, index);
                         } else {
@@ -1384,7 +1385,7 @@ public class Cursor {
                         // for variable character string and variable byte string,
                         // there are 2-byte of length in front of the data
                     case Typdef.TWOBYTELENGTH:
-                        columnDataPosition[index] = position_;
+                        columnDataPosition[index] = dataBuffer_.readerIndex();
                         length = readFdocaTwoByteLength(index);
                         // skip length + the 2-byte length field
                         if (isGraphic_[index]) {
@@ -1396,19 +1397,19 @@ public class Cursor {
 
                         // For decimal columns, determine the precision, scale, and the representation
                     case Typdef.DECIMALLENGTH:
-                        columnDataPosition[index] = position_;
+                        columnDataPosition[index] = dataBuffer_.readerIndex();
                         columnDataComputedLength[index] = skipFdocaBytes(getDecimalLength(index), index);
                         break;
 
                     case Typdef.LOBLENGTH:
-                        columnDataPosition[index] = position_;
+                        columnDataPosition[index] = dataBuffer_.readerIndex();
                         columnDataComputedLength[index] = this.skipFdocaBytes(fdocaLength_[index] & 0x7fff, index);
                         break;
 
                         // for short variable character string and short variable byte string,
                         // there is a 1-byte length in front of the data
                     case Typdef.ONEBYTELENGTH:
-                        columnDataPosition[index] = position_;
+                        columnDataPosition[index] = dataBuffer_.readerIndex();
                         length = readFdocaOneByte(index);
                         // skip length + the 1-byte length field
                         if (isGraphic_[index]) {
@@ -1419,7 +1420,7 @@ public class Cursor {
                         break;
 
                     default:
-                        columnDataPosition[index] = position_;
+                        columnDataPosition[index] = dataBuffer_.readerIndex();
                         if (isGraphic_[index]) {
                             columnDataComputedLength[index] = skipFdocaBytes(fdocaLength_[index] * 2, index);
                         } else {
@@ -1444,29 +1445,23 @@ public class Cursor {
                 // non-trivial EXTDTAs for forward only cursors.  Note we do not support
                 // EXTDTA retrieval for scrollable cursors.
                 // if qryrowset was sent on excsqlstt for a sp call, which is only the case
-                if (blocking_ && rtnextrow_ &&
-                    !netResultSet_.scrollable_ &&
-                    !extdtaPositions_.isEmpty()) {
+                // @AGG assume NOT scrollable
+                if (blocking_ && rtnextrow_ && /* !netResultSet_.scrollable_ && */ !extdtaPositions_.isEmpty()) {
                     if (allowServerFetch) {
-                        netResultSet_.flowFetch();
+                        throw new UnsupportedOperationException();
+                        //netResultSet_.flowFetch();
                     } else {
                         return false;
                     }
                 }
             }
         } else {
-            if (netResultSet_ != null && netResultSet_.scrollable_) {
-        if (receivedDeleteHoleWarning) {
-            setIsUpdataDeleteHole(rowIndex, true);
-        } else {
-            if (SanityManager.DEBUG) {
-            // Invariant: for SUR, we introduced the warning
-            // in addition to null data.
-            SanityManager
-                .THROWASSERT("Delete hole warning expected");
-            }
-        }
-            }
+            // @AGG assume NOT scrollable
+//            if (netResultSet_ != null && netResultSet_.scrollable_) {
+//                if (receivedDeleteHoleWarning) {
+//                    setIsUpdataDeleteHole(rowIndex, true);
+//                }
+//            }
         }
 
         // If blocking protocol is used, we could have already received an ENDQRYRM,
@@ -1488,93 +1483,93 @@ public class Cursor {
      * has been received. This method should only be called when the
      * cursor is being closed since the pointer to the current row can
      * be modified.
-     *
-     * @exception SQLException
      */
-    void scanDataBufferForEndOfData() throws SQLException {
+    void scanDataBufferForEndOfData() {
         while (!allRowsReceivedFromServer() &&
-               (position_ != lastValidBytePosition_)) {
+               (dataBuffer_.readerIndex() != lastValidBytePosition_)) {
             stepNext(false);
         }
     }
 
-    private int readFdocaInt() throws SQLException {
+    private int readFdocaInt() {
         checkForSplitRowAndComplete(4);
-        int i = SignedBinary.getInt(dataBuffer_, position_);
-        position_ += 4;
-        return i;
+        return dataBuffer_.readIntLE();
+//        int i = SignedBinary.getInt(dataBuffer_, position_);
+//        position_ += 4;
+//        return i;
     }
 
     // Reads 1-byte from the dataBuffer from the current position.
     // If position is already at the end of the buffer, send CNTQRY to get more data.
-    private int readFdocaOneByte() throws SQLException {
+    private int readFdocaOneByte() {
         checkForSplitRowAndComplete(1);
-        return dataBuffer_[position_++] & 0xff;
+        //return dataBuffer_[position_++] & 0xff;
+        return dataBuffer_.readUnsignedByte();
     }
 
     // Reads 1-byte from the dataBuffer from the current position.
     // If position is already at the end of the buffer, send CNTQRY to get more data.
-    private int readFdocaOneByte(int index)
-            throws SQLException {
+    private int readFdocaOneByte(int index) {
 
         checkForSplitRowAndComplete(1, index);
-        return dataBuffer_[position_++] & 0xff;
+        //return dataBuffer_[position_++] & 0xff;
+        return dataBuffer_.readByte();
     }
 
     // Reads <i>length</i> number of bytes from the dataBuffer starting from the
     // current position.  Returns a new byte array which contains the bytes read.
     // If current position plus length goes past the lastValidBytePosition, send
     // CNTQRY to get more data.
-    private byte[] readFdocaBytes(int length)
-            throws SQLException {
+    private byte[] readFdocaBytes(int length) {
 
         checkForSplitRowAndComplete(length);
 
         byte[] b = new byte[length];
-        System.arraycopy(dataBuffer_, position_, b, 0, length);
-        position_ += length;
-
+        dataBuffer_.readBytes(b);
+//        System.arraycopy(dataBuffer_, position_, b, 0, length);
+//        position_ += length;
+//
         return b;
     }
 
     // Reads 2-bytes from the dataBuffer starting from the current position, and
     // returns an integer constructed from the 2-bytes.  If current position plus
     // 2 bytes goes past the lastValidBytePosition, send CNTQRY to get more data.
-    private int readFdocaTwoByteLength()
-            throws SQLException {
+    private int readFdocaTwoByteLength() {
 
         checkForSplitRowAndComplete(2);
-        return
-                ((dataBuffer_[position_++] & 0xff) << 8) +
-                ((dataBuffer_[position_++] & 0xff) << 0);
+        return dataBuffer_.readShort();
+//        return
+//                ((dataBuffer_[position_++] & 0xff) << 8) +
+//                ((dataBuffer_[position_++] & 0xff) << 0);
     }
 
-    private int readFdocaTwoByteLength(int index)
-            throws SQLException {
+    private int readFdocaTwoByteLength(int index) {
 
         checkForSplitRowAndComplete(2, index);
-        return
-                ((dataBuffer_[position_++] & 0xff) << 8) +
-                ((dataBuffer_[position_++] & 0xff) << 0);
+        return dataBuffer_.readShort();
+//        return
+//                ((dataBuffer_[position_++] & 0xff) << 8) +
+//                ((dataBuffer_[position_++] & 0xff) << 0);
     }
 
     // Check if position plus length goes past the lastValidBytePosition.
     // If so, send CNTQRY to get more data.
     // length - number of bytes to skip
     // returns the number of bytes skipped
-    private int skipFdocaBytes(int length)
-            throws SQLException {
+    private int skipFdocaBytes(int length) {
 
         checkForSplitRowAndComplete(length);
-        position_ += length;
+        dataBuffer_.skipBytes(length);
+//        position_ += length;
         return length;
     }
 
-    private int skipFdocaBytes(int length, int index)
-            throws SQLException {
+    private int skipFdocaBytes(int length, int index) {
 
         checkForSplitRowAndComplete(length, index);
-        position_ += length;
+//        position_ += length;
+        dataBuffer_.skipBytes(length);
         return length;
     }
 
@@ -1583,21 +1578,23 @@ public class Cursor {
     // When we shift partial row, we'll have to recalculate column offsets
     // up to this column.
     private void shiftPartialRowToBeginning() {
-        // Get the length to shift from the beginning of the partial row.
-        int length = lastValidBytePosition_ - currentRowPosition_;
-
-        // shift the data in the dataBufferStream
-        dataBufferStream_.reset();
-        if (dataBuffer_ != null) {
-            dataBufferStream_.write(dataBuffer_, currentRowPosition_, length);
-        }
-
-        for (int i = 0; i < length; i++) {
-            dataBuffer_[i] = dataBuffer_[currentRowPosition_ + i];
-        }
-
-        position_ = length - (lastValidBytePosition_ - position_);
-        lastValidBytePosition_ = length;
+        if(true)
+            throw new UnsupportedOperationException("Need to step through this method");
+//        // Get the length to shift from the beginning of the partial row.
+//        int length = lastValidBytePosition_ - currentRowPosition_;
+//
+//        // shift the data in the dataBufferStream
+//        dataBufferStream_.reset();
+//        if (dataBuffer_ != null) {
+//            dataBufferStream_.write(dataBuffer_, currentRowPosition_, length);
+//        }
+//
+//        for (int i = 0; i < length; i++) {
+//            dataBuffer_[i] = dataBuffer_[currentRowPosition_ + i];
+//        }
+//
+//        position_ = length - (lastValidBytePosition_ - position_);
+//        lastValidBytePosition_ = length;
     }
 
     /**
@@ -1625,7 +1622,7 @@ public class Cursor {
 
         for (int i = 0; i < columns_; i++) {
             if ((isNonTrivialDataLob(i)) 
-                && (locator(i + 1) == Lob.INVALID_LOCATOR))
+                && (locator(i + 1) == -1)) // Lob.INVALID_LOCATOR))
             // key = column position, data = index to corresponding data in extdtaData_
             // ASSERT: the server always returns the EXTDTA objects in ascending order
             {
@@ -1647,7 +1644,8 @@ public class Cursor {
         int position = columnDataPosition_[index];
 
         // if the high-order bit is set, length is unknown -> set value to x'FF..FF'
-        if (((dataBuffer_[position]) & 0x80) == 0x80) {
+        //if (((dataBuffer_[position]) & 0x80) == 0x80) {
+        if ((dataBuffer_.getByte(dataBuffer_.readerIndex()) & 0x80) == 0x80) {
             length = -1;
         } else {
 
@@ -1666,9 +1664,20 @@ public class Cursor {
                 longBytes[i] = lengthBytes[j];
                 j++;
             }
-            length = SignedBinary.getLong(longBytes, 0);
+            length = getLong(longBytes, 0);
         }
         return (length != 0L) ? true : false;
+    }
+    
+    private static final long getLong(byte[] buffer, int offset) {
+        return (long) (((buffer[offset + 0] & 0xffL) << 56) +
+                ((buffer[offset + 1] & 0xffL) << 48) +
+                ((buffer[offset + 2] & 0xffL) << 40) +
+                ((buffer[offset + 3] & 0xffL) << 32) +
+                ((buffer[offset + 4] & 0xffL) << 24) +
+                ((buffer[offset + 5] & 0xffL) << 16) +
+                ((buffer[offset + 6] & 0xffL) << 8) +
+                ((buffer[offset + 7] & 0xffL) << 0));
     }
 
     protected void clearLobData_() {
@@ -1681,9 +1690,7 @@ public class Cursor {
     //
     // FORMAT FOR ALL SQLAM LEVELS
     //   SQLCAGRP; GROUP LID 0x54; ELEMENT TAKEN 0(all); REP FACTOR 1
-    private NetSqlca[] parseSQLCARD(Typdef typdef)
-            throws SQLException {
-
+    private NetSqlca[] parseSQLCARD(Typdef typdef) {
         return parseSQLCAGRP(typdef);
     }
 
@@ -1702,8 +1709,7 @@ public class Cursor {
     //   SQLERRPROC; PROTOCOL TYPE FCS; ENVLID 0x30; Length Override 8
     //   SQLCAXGRP; PROTOCOL TYPE N-GDA; ENVLID 0x52; Length Override 0
     //   SQLDIAGGRP; PROTOCOL TYPE N-GDA; ENVLID 0x56; Length Override 0
-    private NetSqlca[] parseSQLCAGRP(Typdef typdef)
-            throws SQLException {
+    private NetSqlca[] parseSQLCAGRP(Typdef typdef) {
 
         if (readFdocaOneByte() == CodePoint.NULLDATA) {
             return null;
@@ -1711,7 +1717,7 @@ public class Cursor {
         int sqlcode = readFdocaInt();
         byte[] sqlstate = readFdocaBytes(5);
         byte[] sqlerrproc = readFdocaBytes(8);
-        NetSqlca netSqlca = new NetSqlca(netAgent_.netConnection_, sqlcode, sqlstate, sqlerrproc);
+        NetSqlca netSqlca = new NetSqlca(/*netAgent_.netConnection_, */sqlcode, sqlstate, sqlerrproc);
 
         parseSQLCAXGRP(typdef, netSqlca);
 
@@ -1775,7 +1781,7 @@ public class Cursor {
     //   SQLRDBNAME; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 1024
     //   SQLERRMSG_m; PROTOCOL TYPE VCM; ENVLID 0x3E; Length Override 70
     //   SQLERRMSG_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 70
-    private void parseSQLCAXGRP(Typdef typdef, NetSqlca netSqlca) throws SQLException {
+    private void parseSQLCAXGRP(Typdef typdef, NetSqlca netSqlca) {
         if (readFdocaOneByte() == CodePoint.NULLDATA) {
             netSqlca.setContainsSqlcax(false);
             return;
@@ -1816,7 +1822,7 @@ public class Cursor {
     }
 
     // SQLDIAGGRP : FDOCA EARLY GROUP
-    private NetSqlca[] parseSQLDIAGGRP() throws SQLException {
+    private NetSqlca[] parseSQLDIAGGRP() {
         if (readFdocaOneByte() == CodePoint.NULLDATA) {
             return null;
         }
@@ -1830,7 +1836,7 @@ public class Cursor {
 
     // SQL Diagnostics Statement Group Description - Identity 0xD3
     // NULLDATA will be received for now
-    private void parseSQLDIAGSTT() throws SQLException {
+    private void parseSQLDIAGSTT() {
         if (readFdocaOneByte() == CodePoint.NULLDATA) {
             return;
         }
@@ -1846,8 +1852,7 @@ public class Cursor {
     // SQL Diagnostics Condition Information Array - Identity 0xF5
     // SQLNUMROW; ROW LID 0x68; ELEMENT TAKEN 0(all); REP FACTOR 1
     // SQLDCIROW; ROW LID 0xE5; ELEMENT TAKEN 0(all); REP FACTOR 0(all)
-    private NetSqlca[] parseSQLDIAGCI() 
-            throws SQLException {
+    private NetSqlca[] parseSQLDIAGCI()  {
         int num = readFdocaTwoByteLength(); // SQLNUMGRP - SQLNUMROW
         NetSqlca[] ret_val = null;
         if (num != 0) {
@@ -1862,7 +1867,7 @@ public class Cursor {
 
     // SQL Diagnostics Connection Array - Identity 0xF6
     // NULLDATA will be received for now
-    private void parseSQLDIAGCN() throws SQLException {
+    private void parseSQLDIAGCN() {
         if (readFdocaOneByte() == CodePoint.NULLDATA) {
             return;
         }
@@ -1902,17 +1907,16 @@ public class Cursor {
     // SQLDCPNAM_m; PROTOCOL TYPE NVCM; ENVLID 0x3F; Length Override 255
     // SQLDCPNAM_s; PROTOCOL TYPE NVCS; ENVLID 0x33; Length Override 255
     // SQLDCXGRP; PROTOCOL TYPE N-GDA; ENVLID 0xD3; Length Override 1
-    private NetSqlca parseSQLDCGRP() 
-            throws SQLException {
+    private NetSqlca parseSQLDCGRP()  {
         
         int sqldcCode = readFdocaInt(); // SQLCODE
         String sqldcState = readFdocaString(5, 
-                netAgent_.targetTypdef_.getCcsidSbcEncoding()); // SQLSTATE
+                Typdef.targetTypdef.getCcsidSbcEncoding()); // SQLSTATE
         int sqldcReason = readFdocaInt();  // REASON_CODE
 
         skipFdocaBytes(12); // LINE_NUMBER + ROW_NUMBER
 
-        NetSqlca sqlca = new NetSqlca(netAgent_.netConnection_,
+        NetSqlca sqlca = new NetSqlca(//netAgent_.netConnection_,
                     sqldcCode,
                     sqldcState,
                     (byte[]) null);
@@ -1935,13 +1939,13 @@ public class Cursor {
 
     // SQL Diagnostics Condition Row - Identity 0xE5
     // SQLDCGRP; GROUP LID 0xD5; ELEMENT TAKEN 0(all); REP FACTOR 1
-    private NetSqlca parseSQLDCROW() throws SQLException {
+    private NetSqlca parseSQLDCROW() {
         return parseSQLDCGRP();
     }
     
     // SQL Diagnostics Condition Token Array - Identity 0xF7
     // NULLDATA will be received for now
-    private void parseSQLDCTOKS() throws SQLException {
+    private void parseSQLDCTOKS() {
         if (readFdocaOneByte() == CodePoint.NULLDATA) {
             return;
         }
@@ -1956,7 +1960,7 @@ public class Cursor {
 
     // SQL Diagnostics Extended Names Group Description - Identity 0xD5
     // NULLDATA will be received for now
-    private void parseSQLDCXGRP() throws SQLException {
+    private void parseSQLDCXGRP() {
         if (readFdocaOneByte() == CodePoint.NULLDATA) {
             return;
         }
@@ -1969,23 +1973,23 @@ public class Cursor {
 //                    "parseSQLDCXGRP"));
     }
 
-    private String parseVCS(Typdef typdefInEffect) throws SQLException {
+    private String parseVCS(Typdef typdefInEffect) {
         return readFdocaString(readFdocaTwoByteLength(),
                 typdefInEffect.getCcsidSbcEncoding());
     }
 
     // This is not used for column data.
-    private String readFdocaString(int length, Charset encoding)
-            throws SQLException {
+    private String readFdocaString(int length, Charset encoding) {
         if (length == 0) {
             return null;
         }
 
         checkForSplitRowAndComplete(length);
 
-        String s = new String(dataBuffer_, position_, length, encoding);
-        position_ += length;
-        return s;
+        return dataBuffer_.readCharSequence(length, encoding).toString();
+//        String s = new String(dataBuffer_, position_, length, encoding);
+//        position_ += length;
+//        return s;
     }
 
     void allocateColumnOffsetAndLengthArrays() {
@@ -2026,102 +2030,102 @@ public class Cursor {
         // Zero is not a valid locator, it indicates a zero length value
         if ((locator == 0x8000) || (locator == 0x8002) || (locator == 0x8004) || 
                 (locator == 0x8006) || (locator == 0x8008) ||(locator == 0)) {
-            return Lob.INVALID_LOCATOR;
+            return -1; // Lob.INVALID_LOCATOR;
         } else {
             return locator;
         }
     }
 
-    /**
-     * @see org.apache.derby.client.am.Cursor#getBlobColumn_
-     */
-    public ClientBlob getBlobColumn_(
-            int column,
-            Agent agent,
-            boolean toBePublished) throws SQLException {
+//    /**
+//     * @see org.apache.derby.client.am.Cursor#getBlobColumn_
+//     */
+//    public ClientBlob getBlobColumn_(
+//            int column,
+//            Agent agent,
+//            boolean toBePublished) throws SQLException {
+//
+//        // Only inform the tracker if the Blob is published to the user.
+//        if (toBePublished) {
+//            if ( netResultSet_ != null ) { netResultSet_.markLOBAsPublished(column); }
+//        }
+//        // Check for locator
+//        int locator = locator(column);
+//        if (locator > 0) { // Create locator-based LOB object
+//            return new ClientBlob(agent, locator);
+//        }
+//        
+//        // The Blob value has been sent instead of locator 
+//        int index = column - 1;
+//        int dataOffset;
+//        byte[] data;
+//        ClientBlob blob = null;
+//
+//        // locate the EXTDTA bytes, if any
+//        data = findExtdtaData(column);
+//
+//        if (data != null) {
+//            // data found
+//            // set data offset based on the presence of a null indicator
+//            if (!nullable_[index]) {
+//                dataOffset = 0;
+//            } else {
+//                dataOffset = 1;
+//            }
+//
+//            blob = new ClientBlob(data, agent, dataOffset);
+//        } else {
+//            blob = new ClientBlob(new byte[0], agent, 0);
+//        }
+//
+//        return blob;
+//    }
 
-        // Only inform the tracker if the Blob is published to the user.
-        if (toBePublished) {
-            if ( netResultSet_ != null ) { netResultSet_.markLOBAsPublished(column); }
-        }
-        // Check for locator
-        int locator = locator(column);
-        if (locator > 0) { // Create locator-based LOB object
-            return new ClientBlob(agent, locator);
-        }
-        
-        // The Blob value has been sent instead of locator 
-        int index = column - 1;
-        int dataOffset;
-        byte[] data;
-        ClientBlob blob = null;
 
-        // locate the EXTDTA bytes, if any
-        data = findExtdtaData(column);
+//    /**
+//     * @see org.apache.derby.client.am.Cursor#getClobColumn_
+//     */
+//    public ClientClob getClobColumn_(
+//            int column,
+//            Agent agent,
+//            boolean toBePublished) {
+//
+//        // Only inform the tracker if the Clob is published to the user.
+//        if (toBePublished) {
+//            if ( netResultSet_ != null ) { netResultSet_.markLOBAsPublished(column); }
+//        }
+//        // Check for locator
+//        int locator = locator(column);
+//        if (locator > 0) { // Create locator-based LOB object
+//            return new ClientClob(agent, locator);
+//        }
+//        
+//        // The Clob value has been sent instead of locator 
+//        int index = column - 1;
+//        int dataOffset;
+//        byte[] data;
+//        ClientClob clob = null;
+//
+//        // locate the EXTDTA bytes, if any
+//        data = findExtdtaData(column);
+//
+//        if (data != null) {
+//            // data found
+//            // set data offset based on the presence of a null indicator
+//            if (!nullable_[index]) {
+//                dataOffset = 0;
+//            } else {
+//                dataOffset = 1;
+//            }
+//            clob = new ClientClob(agent, data, charset_[index], dataOffset);
+//        } else {
+//            // the locator is not valid, it is a zero-length LOB
+//            clob = new ClientClob(agent, "");
+//        }
+//
+//        return clob;
+//    }
 
-        if (data != null) {
-            // data found
-            // set data offset based on the presence of a null indicator
-            if (!nullable_[index]) {
-                dataOffset = 0;
-            } else {
-                dataOffset = 1;
-            }
-
-            blob = new ClientBlob(data, agent, dataOffset);
-        } else {
-            blob = new ClientBlob(new byte[0], agent, 0);
-        }
-
-        return blob;
-    }
-
-
-    /**
-     * @see org.apache.derby.client.am.Cursor#getClobColumn_
-     */
-    public ClientClob getClobColumn_(
-            int column,
-            Agent agent,
-            boolean toBePublished) throws SQLException {
-
-        // Only inform the tracker if the Clob is published to the user.
-        if (toBePublished) {
-            if ( netResultSet_ != null ) { netResultSet_.markLOBAsPublished(column); }
-        }
-        // Check for locator
-        int locator = locator(column);
-        if (locator > 0) { // Create locator-based LOB object
-            return new ClientClob(agent, locator);
-        }
-        
-        // The Clob value has been sent instead of locator 
-        int index = column - 1;
-        int dataOffset;
-        byte[] data;
-        ClientClob clob = null;
-
-        // locate the EXTDTA bytes, if any
-        data = findExtdtaData(column);
-
-        if (data != null) {
-            // data found
-            // set data offset based on the presence of a null indicator
-            if (!nullable_[index]) {
-                dataOffset = 0;
-            } else {
-                dataOffset = 1;
-            }
-            clob = new ClientClob(agent, data, charset_[index], dataOffset);
-        } else {
-            // the locator is not valid, it is a zero-length LOB
-            clob = new ClientClob(agent, "");
-        }
-
-        return clob;
-    }
-
-    // this is really an event-callback from NetStatementReply.parseSQLDTARDarray()
+//    // this is really an event-callback from NetStatementReply.parseSQLDTARDarray()
     void initializeColumnInfoArrays(
             Typdef typdef,
             int columnCount) {
@@ -2135,21 +2139,23 @@ public class Cursor {
         typeToUseForComputingDataLength_ = new int[columnCount];
     }
 
-    protected void getMoreData_() throws SQLException {
+    protected void getMoreData_() {
         // reset the dataBuffer_ before getting more data if cursor is foward-only.
         // getMoreData() is only called in Cursor.next() when current position is
         // equal to lastValidBytePosition_.
-        if (netResultSet_.resultSetType_ == ResultSet.TYPE_FORWARD_ONLY) {
+        // @AGG assume FORWARD_ONLY
+//        if (netResultSet_.resultSetType_ == ResultSet.TYPE_FORWARD_ONLY) {
             resetDataBuffer();
-        }
-        netResultSet_.flowFetch();
+//        }
+        throw new UnsupportedOperationException("flowFetch");
+        //netResultSet_.flowFetch();
     }
 
     public void nullDataForGC()       // memory leak fix
     {
         dataBuffer_ = null;
-        dataBufferStream_ = null;
         columnDataPosition_ = null;
+        qrydscTypdef_ = null;
         columnDataComputedLength_ = null;
         columnDataPositionCache_ = null;
         columnDataLengthCache_ = null;
@@ -2184,12 +2190,12 @@ public class Cursor {
      * @param index the index of the column to be fetched, or -1 when not
      * fetching column data
      */
-    private void checkForSplitRowAndComplete(int length, int index)
-            throws SQLException {
+    private void checkForSplitRowAndComplete(int length, int index) {
         // For singleton select, the complete row always comes back, even if
         // multiple query blocks are required, so there is no need to drive a
         // flowFetch (continue query) request for singleton select.
-        while ((position_ + length) > lastValidBytePosition_) {
+        //while ((position_ + length) > lastValidBytePosition_) {
+        while (dataBuffer_.readableBytes() > lastValidBytePosition_) {
             // Check for ENDQRYRM, throw SQLException if already received one.
             checkAndThrowReceivedEndqryrm();
 
@@ -2209,7 +2215,7 @@ public class Cursor {
      *
      * @param length the length in bytes of the data needed
      */
-    private void checkForSplitRowAndComplete(int length) throws SQLException {
+    private void checkForSplitRowAndComplete(int length) {
         checkForSplitRowAndComplete(length, -1);
     }
 
@@ -2219,30 +2225,32 @@ public class Cursor {
     // been received.  If so, do not send CNTQRY because the cursor is already closed on the server.
     // Instead, throw a SQLException.  Since we did not receive a complete row, it is not safe to
     // allow the application to continue to access the ResultSet, so we close it.
-    private void checkAndThrowReceivedEndqryrm() throws SQLException {
+    private void checkAndThrowReceivedEndqryrm() {
         // If we are in a split row, and before sending CNTQRY, check whether an ENDQRYRM
         // has been received.
-        if (!netResultSet_.openOnServer_) {
-            SQLException SQLException = null;
-            int sqlcode = Utils.getSqlcodeFromSqlca(
-                netResultSet_.queryTerminatingSqlca_);
-
-            if (sqlcode < 0) {
-                SQLException = new SQLException(agent_.logWriter_, netResultSet_.queryTerminatingSqlca_);
-            } else {
-                SQLException = new SQLException(agent_.logWriter_, 
-                    new ClientMessageId(SQLState.NET_QUERY_PROCESSING_TERMINATED));
-            }
-            try {
-                netResultSet_.closeX(); // the auto commit logic is in closeX()
-            } catch (SQLException e) {
-                SQLException.setNextException(e);
-            }
-            throw SQLException;
-        }
+        // TODO: check for ENDQRYRM before throwing exception
+        throw new IllegalStateException("SQLState.NET_QUERY_PROCESSING_TERMINATED");
+//        if (!netResultSet_.openOnServer_) {
+//            SQLException SQLException = null;
+//            int sqlcode = Utils.getSqlcodeFromSqlca(
+//                netResultSet_.queryTerminatingSqlca_);
+//
+//            if (sqlcode < 0) {
+//                SQLException = new SQLException(agent_.logWriter_, netResultSet_.queryTerminatingSqlca_);
+//            } else {
+//                SQLException = new SQLException(agent_.logWriter_, 
+//                    new ClientMessageId(SQLState.NET_QUERY_PROCESSING_TERMINATED));
+//            }
+//            try {
+//                netResultSet_.closeX(); // the auto commit logic is in closeX()
+//            } catch (SQLException e) {
+//                SQLException.setNextException(e);
+//            }
+//            throw SQLException;
+//        }
     }
 
-    private void checkAndThrowReceivedEndqryrm(int lastValidBytePositionBeforeFetch) throws SQLException {
+    private void checkAndThrowReceivedEndqryrm(int lastValidBytePositionBeforeFetch) {
         // if we have received more data in the dataBuffer_, just return.
         if (lastValidBytePosition_ > lastValidBytePositionBeforeFetch) {
             return;
@@ -2258,20 +2266,22 @@ public class Cursor {
      * @return the value of {@code lastValidBytePosition_} before more data
      * was fetched
      */
-    private int completeSplitRow(int index) throws SQLException {
+    private int completeSplitRow(int index) {
         int lastValidBytePositionBeforeFetch = 0;
-        if (netResultSet_ != null && netResultSet_.scrollable_) {
-            lastValidBytePositionBeforeFetch = lastValidBytePosition_;
-            netResultSet_.flowFetchToCompleteRowset();
-        } else {
+        // @AGG assume NOT scrollable
+//        if (netResultSet_ != null && netResultSet_.scrollable_) {
+//            lastValidBytePositionBeforeFetch = lastValidBytePosition_;
+//            netResultSet_.flowFetchToCompleteRowset();
+//        } else {
             // Shift partial row to the beginning of the dataBuffer
             shiftPartialRowToBeginning();
             adjustColumnOffsetsForColumnsPreviouslyCalculated(index);
             resetCurrentRowPosition();
             lastValidBytePositionBeforeFetch = lastValidBytePosition_;
-            netResultSet_.flowFetch();
-        }
-        return lastValidBytePositionBeforeFetch;
+            throw new UnsupportedOperationException();
+            // netResultSet_.flowFetch(); TODO @AGG implement flowFetch
+//        }
+        //return lastValidBytePositionBeforeFetch;
     }
 
     private int[] allocateColumnDataPositionArray(int row) {
@@ -2319,7 +2329,8 @@ public class Cursor {
      */
     public final void setAllRowsReceivedFromServer(boolean b) {
         if (b && qryclsimpEnabled_) {
-            netResultSet_.markClosedOnServer();
+            // @AGG this only sets a boolean on the ResultSet
+            //netResultSet_.markClosedOnServer();
         }
         allRowsReceivedFromServer_ = b;
     }

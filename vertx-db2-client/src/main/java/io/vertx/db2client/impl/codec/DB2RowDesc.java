@@ -28,7 +28,7 @@ class DB2RowDesc extends RowDesc {
   private final ColumnMetaData columnDefinitions;
 
   DB2RowDesc(ColumnMetaData columnDefinitions) {
-      super(Collections.unmodifiableList(Stream.of(columnDefinitions.sqlName_)
+      super(Collections.unmodifiableList(Stream.of(columnDefinitions.sqlxName_)
               .collect(Collectors.toList())));
     this.columnDefinitions = columnDefinitions;
   }

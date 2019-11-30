@@ -196,9 +196,8 @@ public class DRDAQueryRequest extends DRDARequest {
             buffer.writeShort(0xffff);
 //            write2Bytes(0xffff);
         } else {
-            // @AGG assuming CcsidMbcSet
-//            if (netAgent_.typdef_.isCcsidMbcSet()) {
-            byte[] sqlBytes = string.getBytes(CCSIDManager.UTF8);
+            if (Typdef.typdef.isCcsidMbcSet()) {
+            byte[] sqlBytes = string.getBytes(Typdef.typdef.getCcsidMbcEncoding());
 //                byte[] sqlBytes = string.getBytes(netAgent_.typdef_.getCcsidMbcEncoding());
             buffer.writeByte(0x00);
 //                write1Byte(0x00);
@@ -208,13 +207,18 @@ public class DRDAQueryRequest extends DRDARequest {
 //                writeBytes(sqlBytes, sqlBytes.length);
             buffer.writeByte(0xff);
 //                write1Byte(0xff);
-//            } else {
-//                byte[] sqlBytes = string.getBytes(netAgent_.typdef_.getCcsidSbcEncoding());
+            } else {
+                byte[] sqlBytes = string.getBytes(Typdef.typdef.getCcsidSbcEncoding());
+                buffer.writeByte(0xff);
+                buffer.writeByte(0x00);
 //                write1Byte(0xff);
 //                write1Byte(0x00);
+                buffer.writeInt(sqlBytes.length);
 //                write4Bytes(sqlBytes.length);
+                buffer.writeBytes(sqlBytes);
 //                writeBytes(sqlBytes, sqlBytes.length);
 //            }
+            }
         }
     }
 

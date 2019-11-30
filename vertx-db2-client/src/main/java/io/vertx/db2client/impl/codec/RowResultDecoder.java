@@ -1,6 +1,8 @@
 package io.vertx.db2client.impl.codec;
 
 import java.nio.charset.Charset;
+import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.stream.Collector;
 
 import io.netty.buffer.ByteBuf;
@@ -34,9 +36,24 @@ class RowResultDecoder<C, R> extends RowDecoder<C, R> {
     DB2Codec.dumpBuffer(in);
     
     boolean readData = response.readOpenQueryData();
-    System.out.println("@AGG did read data? " + readData);
-    System.out.println("@AGG cursor bytes:");
-    DB2Codec.dumpBuffer(cursor.dataBuffer_);
+    try {
+        System.out.println("@AGG did read data? " + readData);
+        System.out.println("@AGG cursor bytes:");
+        DB2Codec.dumpBuffer(cursor.dataBuffer_);
+        System.out.println("@AGG cols=" + cursor.columns_);
+        System.out.println("@AGG colNames=" + rowDesc.columnNames());
+        System.out.println("              " + Arrays.toString(rowDesc.columnDefinitions().sqlName_));
+        boolean hasRow = cursor.next();
+        System.out.println("@AGG has next row? " + hasRow);
+        if(hasRow) {
+            String str = cursor.getString(1);
+            System.out.println("@AGG got string value=" + str);
+            row.addString(str);
+        }
+    } catch(Throwable t) {
+        t.printStackTrace();
+        throw new IllegalStateException(t);
+    }
 //    if (rowDesc.dataFormat() == DataFormat.BINARY) {
 //      // BINARY row decoding
 //      // 0x00 packet header
@@ -44,7 +61,7 @@ class RowResultDecoder<C, R> extends RowDecoder<C, R> {
 //      int nullBitmapLength = (len + 7 + 2) >>  3;
 //      int nullBitmapIdx = 1 + in.readerIndex();
 //      in.skipBytes(1 + nullBitmapLength);
-//
+// 
 //      // values
 //      for (int c = 0; c < len; c++) {
 //        int val = c + 2;

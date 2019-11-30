@@ -1,12 +1,6 @@
 package io.vertx.db2client.impl.drda;
 
-import java.io.ByteArrayOutputStream;
-import java.sql.ResultSet;
-
-import org.apache.derby.client.am.DisconnectException;
-
 import io.netty.buffer.ByteBuf;
-import io.vertx.db2client.impl.codec.DB2Codec;
 
 public class DRDAQueryResponse extends DRDAResponse {
     
@@ -344,6 +338,7 @@ public class DRDAQueryResponse extends DRDAResponse {
 //              resultSet_.resultSetType_ == ResultSet.TYPE_SCROLL_SENSITIVE)) {
 //            fetchSize = DRDAQueryRequest.defaultFetchSize;
 //        }
+        // @AGG customize fetchSize here if needed
         // @AGG assuming always TYPE_FORWARD_ONLY 
     }
     
@@ -536,7 +531,8 @@ public class DRDAQueryResponse extends DRDAResponse {
         int previousTripletId = FdocaConstants.SQLDTARD_TRIPLET_ID_START;
         int mddProtocolType = 0;
         int columnCount = 0;
-        // @AGG removed netAgent_.targetTypdef_.clearMddOverrides();
+        Typdef.targetTypdef.clearMddOverrides();
+        // netAgent_.targetTypdef_.clearMddOverrides();
 
         int ddmLength = getDdmLength();
         ensureBLayerDataInBuffer(ddmLength);
@@ -586,8 +582,7 @@ public class DRDAQueryResponse extends DRDAResponse {
                 int columns = peekTotalColumnCount(tripletLength);
                 // peek ahead to get the total number of columns.
                 columnMetaData.setColumnCount(columns);
-//                cursor.initializeColumnInfoArrays(
-//                    netAgent_.targetTypdef_, columns);
+                cursor.initializeColumnInfoArrays(Typdef.targetTypdef, columns);
                 columnCount += parseSQLDTAGRPdataLabelsAndUpdateColumn(/*cursor, */columnCount, tripletLength);
                 break;
 
@@ -651,18 +646,13 @@ public class DRDAQueryResponse extends DRDAResponse {
                         FdocaConstants.SQLDTARD_TRIPLET_ID_SDA);
                 previousTripletType = FdocaConstants.SQLDTARD_TRIPLET_TYPE_SDA;
                 previousTripletId = FdocaConstants.SQLDTARD_TRIPLET_ID_SDA;
-//                netAgent_.targetTypdef_.setMddOverride(mddProtocolType, // mdd protocol type
-//                        tripletId, // fdocaTripletLid
-//                        readFastUnsignedByte(), // fdocaFieldType
-//                        readFastInt(), // ccsid
-//                        readFastUnsignedByte(), // characterSize
-//                        readFastUnsignedByte(), // mode
-//                        readFastShort());
-                readFastUnsignedByte(); // fdocaFieldType
-                readFastInt(); // ccsid
-                readFastUnsignedByte(); // characterSize
-                readFastUnsignedByte(); // mode
-                readFastShort();
+                Typdef.targetTypdef.setMddOverride(mddProtocolType, // mdd protocol type
+                        tripletId, // fdocaTripletLid
+                        readFastUnsignedByte(), // fdocaFieldType
+                        readFastInt(), // ccsid
+                        readFastUnsignedByte(), // characterSize
+                        readFastUnsignedByte(), // mode
+                        readFastShort());
                 break;
 
             default:
@@ -704,9 +694,7 @@ public class DRDAQueryResponse extends DRDAResponse {
     private int parseSQLDTAGRPdataLabelsAndUpdateColumn(/*NetCursor cursor, */int columnIndex, int tripletLength) {
         int numColumns = (tripletLength - 3) / 3;
         for (int i = columnIndex; i < columnIndex + numColumns; i++) {
-            //cursor.qrydscTypdef_.updateColumn(cursor, i, readFastUnsignedByte(), readFastUnsignedShort());
-            readFastUnsignedByte();
-            readFastUnsignedShort();
+            cursor.qrydscTypdef_.updateColumn(cursor, i, readFastUnsignedByte(), readFastUnsignedShort());
         }
         return numColumns;
     }

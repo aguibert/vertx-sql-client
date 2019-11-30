@@ -395,22 +395,22 @@ public abstract class DRDAResponse {
             // other values to the server.  In order to pick up the correct values,
             // a little reorganization may need to take place so that this code (or
             // whatever code sets the message) has access to the correct values.
+            int cpValue = 0;
+            switch (codePoint) {
+            case CodePoint.CCSIDSBC:
+                cpValue = Typdef.typdef.getCcsidSbc();
+                break;
+            case CodePoint.CCSIDDBC:
+                cpValue = Typdef.typdef.getCcsidDbc();
+                break;
+            case CodePoint.CCSIDMBC:
+                cpValue = Typdef.typdef.getCcsidSbc();
+                break;
+            default:
+                // should never be in this default case...
+                break;
+            }
             throw new IllegalStateException("SQLState.DRDA_NO_AVAIL_CODEPAGE_CONVERSION");
-//            int cpValue = 0;
-//            switch (codePoint) {
-//            case CodePoint.CCSIDSBC:
-//                cpValue = netAgent_.typdef_.getCcsidSbc();
-//                break;
-//            case CodePoint.CCSIDDBC:
-//                cpValue = netAgent_.typdef_.getCcsidDbc();
-//                break;
-//            case CodePoint.CCSIDMBC:
-//                cpValue = netAgent_.typdef_.getCcsidSbc();
-//                break;
-//            default:
-//                // should never be in this default case...
-//                break;
-//            }
 //            agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
 //                new ClientMessageId(SQLState.DRDA_NO_AVAIL_CODEPAGE_CONVERSION),
 //                cpValue, value));
@@ -715,22 +715,19 @@ public abstract class DRDAResponse {
 
             if (peekCP == CodePoint.CCSIDSBC) {
                 foundInPass = true;
-                int ccsid = parseCCSIDSBC();
-                //netAgent_.targetTypdef_.setCcsidSbc(parseCCSIDSBC());
+                Typdef.targetTypdef.setCcsidSbc(parseCCSIDSBC());
                 peekCP = peekCodePoint();
             }
 
             if (peekCP == CodePoint.CCSIDDBC) {
                 foundInPass = true;
-                int ccsid = parseCCSIDDBC();
-//                netAgent_.targetTypdef_.setCcsidDbc(parseCCSIDDBC());
+                Typdef.targetTypdef.setCcsidDbc(parseCCSIDDBC());
                 peekCP = peekCodePoint();
             }
 
             if (peekCP == CodePoint.CCSIDMBC) {
                 foundInPass = true;
-                int ccsid = parseCCSIDMBC();
-//                netAgent_.targetTypdef_.setCcsidMbc(parseCCSIDMBC());
+                Typdef.targetTypdef.setCcsidMbc(parseCCSIDMBC());
                 peekCP = peekCodePoint();
             }
             
