@@ -3,21 +3,12 @@ import java.sql.ResultSet;
 
 public class Section {
     
-    // @AGG originally these were on SectionManager
-    // store package consistency token information and initialized in
-    // setPKGNAMCBytes
-    // holdPKGNAMCBytes stores PKGNAMCBytes when holdability is hold
-    // noHoldPKGNAMCBytes stores PKGNAMCBytes when holdability is no hold
-    byte[] holdPKGNAMCBytes = null;
-    byte[] noHoldPKGNAMCBytes = null;
-
-
-    private final static String packageNameWithHold__ = "SYSLH000";
-    private final static String packageNameWithNoHold__ = "SYSLN000";
-
-    private final static String cursorNamePrefixWithHold__ = "SQL_CURLH000C";
-    private final static String cursorNamePrefixWithNoHold__ = "SQL_CURLN000C";
-
+    @Deprecated // hard-code for testing only
+    public static final Section DEFAULT = new Section("SYSSH200",// name,  @AGG guessing on the section name
+            1, // sectionNumber, @AGG guessing section number
+            "NULLID", //cursorName, 
+            ResultSet.HOLD_CURSORS_OVER_COMMIT); // resultSetHoldability, @AGG assume we are always  HOLD_CURSORS_OVER_COMMIT
+    
     private int sectionNumber;
     private String packageName;
     private String serverCursorName; // As given by dnc package set
@@ -26,13 +17,16 @@ public class Section {
     // Stores the package name and consistency token
     private byte[] PKGNAMCBytes;
     private boolean isGenerated; // flag to identify server generated sections
+    
+    @Override
+    public String toString() {
+        return super.toString() + "{name=" + packageName + ", sectionNumber=" + sectionNumber + ", cursorName=" + serverCursorName + "}"; 
+    }
 
-    Section(String name,
-            int sectionNumber,
-            String cursorName,
-            int resultSetHoldability) {
+    Section(String name, int sectionNumber, String cursorName, int resultSetHoldability) {
         // default for all sections except for generated section , isGenerated is set to false
         init(name, sectionNumber, cursorName, resultSetHoldability, false);
+        System.out.println("@AGG create section: " + this);
     }
 
     public Section(String name, int sectionNumber, String cursorName, int resultSetHoldability, boolean isGenerated) {
@@ -56,7 +50,7 @@ public class Section {
         if (!isGenerated) {
             // @AGG assume we are always using HOLD_CURSORS_OVER_COMMIT
 //            if (resultSetHoldability_ == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
-                PKGNAMCBytes = holdPKGNAMCBytes;
+                PKGNAMCBytes = SectionManager.INSTANCE.holdPKGNAMCBytes;
 //            } else if (resultSetHoldability_ == ResultSet.CLOSE_CURSORS_AT_COMMIT) {
 //                PKGNAMCBytes = agent_.sectionManager_.noHoldPKGNAMCBytes;
 //            }
@@ -80,7 +74,7 @@ public class Section {
         if (isGenerated) {
             PKGNAMCBytes = b.clone();
         } else {
-            setPKGNAMCBytes(b, resultSetHoldability_);
+            SectionManager.INSTANCE.setPKGNAMCBytes(b, resultSetHoldability_);
         }
     }
 
@@ -129,7 +123,6 @@ public class Section {
     }
 
     public void setClientCursorName(String clientCursorName) { //
-        //System.out.println("clientCursorName is set"+ clientCursorName);
         this.clientCursorName_ = clientCursorName;
     }
 
@@ -155,22 +148,4 @@ public class Section {
         serverCursorName = name;
     }
     
-    /**
-     * @AGG originally this was on SectionManager
-     * Store the Packagename and consistency token information This is called from Section.setPKGNAMCBytes
-     *
-     * @param b                    bytearray that has the PKGNAMC information to be stored
-     * @param resultSetHoldability depending on the holdability store it in the correct byte array packagename and
-     *                             consistency token information for when holdability is set to HOLD_CURSORS_OVER_COMMIT
-     *                             is stored in holdPKGNAMCBytes and in noHoldPKGNAMCBytes when holdability is set to
-     *                             CLOSE_CURSORS_AT_COMMIT
-     */
-    void setPKGNAMCBytes(byte[] b, int resultSetHoldability) {
-        if (resultSetHoldability == ResultSet.HOLD_CURSORS_OVER_COMMIT) {
-            holdPKGNAMCBytes = b;
-        } else if (resultSetHoldability == ResultSet.CLOSE_CURSORS_AT_COMMIT) {
-            noHoldPKGNAMCBytes = b;
-        }
-    }
-
 }

@@ -93,7 +93,6 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
 
     @Override
     void decodePayload(ByteBuf payload, int payloadLength) {
-        System.out.println("\n\n@AGG in decode payload status=" + status);
         DRDAConnectResponse response = new DRDAConnectResponse(payload, ccsidManager);
         try {
             switch (status) {
@@ -117,9 +116,10 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
                         getProductData(),
                         DRDAConstants.SYSTEM_ASC);
                 // build ACCRDB
+                securityCheck.completeCommand();
                 int lenOfPayload = packet.writerIndex() - packetStartIdx;
                 sendPacket(packet, lenOfPayload);
-                break;
+                return;
             case ST_AUTHENTICATING:
                 //handleAuthentication(payload);
                 response.readSecurityCheck();
@@ -127,9 +127,10 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
                 if (accData.correlationToken != null)
                     crrtkn_ = accData.correlationToken;
                 setSvrcod(accData.svrcod);
-                System.out.println("@AGG sending success to handler");
                 completionHandler.handle(CommandResponse.success(cmd.connection()));
-                break;
+                return;
+            default: 
+                throw new IllegalStateException("Unknown state: " + status);
             }
         } catch (Throwable t) {
             t.printStackTrace();
@@ -162,6 +163,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
                     CCSIDManager.TARGET_UNICODE_MGR // targetUnicodemgr
             );
             cmd.buildACCSEC(0x03, this.cmd.database(), null);
+            cmd.completeCommand();
         } catch (SQLException e) {
             e.printStackTrace();
         }

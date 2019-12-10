@@ -63,6 +63,22 @@ public class NetSqlca {
       sqlState_ = bytes2String(sqlState,0,sqlState.length);
       sqlErrpBytes_ = sqlErrpBytes;
    }
+   
+   /**
+    * @param sqlca The SQL Communication Area to complete
+    * @return The sqlcode
+    */
+   public static int complete(NetSqlca sqlca) {
+       if (sqlca == null)
+           return 0;
+       if (sqlca.sqlCode_ < 0) {
+           throw new IllegalStateException("Read exception sqlcode=" + sqlca.sqlCode_);
+       }
+       if (sqlca.sqlCode_ > 0) {
+           System.out.println("WARNING sqlcode=" + sqlca.sqlCode_);
+       }
+       return sqlca.sqlCode_;
+   }
 
    void setSqlerrd(int[] sqlErrd) {
        sqlErrd_ = sqlErrd;

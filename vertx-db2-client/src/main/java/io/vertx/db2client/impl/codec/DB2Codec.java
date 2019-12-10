@@ -26,6 +26,8 @@ import java.util.ArrayDeque;
 public class DB2Codec extends CombinedChannelDuplexHandler<DB2Decoder, DB2Encoder> {
 
   private final ArrayDeque<CommandCodec<?, ?>> inflight = new ArrayDeque<>();
+  
+  private static final boolean DEBUG_BYTES = false;
 
   public DB2Codec(DB2SocketConnection mySQLSocketConnection) {
     DB2Encoder encoder = new DB2Encoder(inflight, mySQLSocketConnection);
@@ -38,6 +40,8 @@ public class DB2Codec extends CombinedChannelDuplexHandler<DB2Decoder, DB2Encode
   }
   
   public static void dumpBuffer(ByteBuf buffer, int length) {
+      if (!DEBUG_BYTES)
+          return;
       System.out.print(buffer.toString());
       ByteBuf copy = buffer.slice(buffer.readerIndex(), length);
       for (int i = 0; i < copy.writerIndex(); i++) {
@@ -52,6 +56,8 @@ public class DB2Codec extends CombinedChannelDuplexHandler<DB2Decoder, DB2Encode
   }
   
   public static void dumpBytes(byte[] bytes) {
+      if (!DEBUG_BYTES)
+          return;
       for (int i = 0; i < bytes.length; i++) {
           if (i % 16 == 0)
               System.out.print("\n  ");

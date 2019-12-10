@@ -20,6 +20,7 @@ import io.netty.buffer.ByteBuf;
 import io.vertx.db2client.impl.drda.CCSIDManager;
 import io.vertx.db2client.impl.drda.ColumnMetaData;
 import io.vertx.db2client.impl.drda.Cursor;
+import io.vertx.db2client.impl.drda.DRDAQueryRequest;
 import io.vertx.db2client.impl.drda.DRDAQueryResponse;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.impl.RowDesc;
@@ -32,213 +33,91 @@ import java.util.stream.Collector;
 
 abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends CommandCodec<Boolean, C> {
 
-//  protected CommandHandlerState commandHandlerState = CommandHandlerState.INIT;
-  protected ColumnMetaData columnDefinitions;
-  protected RowResultDecoder<?, T> decoder;
-  private int currentColumn;
+    protected static enum CommandHandlerState {
+        HANDLING_COLUMN_DEFINITION, 
+        HANDLING_ROW_DATA, 
+        HANDLING_END_OF_QUERY
+    }
 
-  QueryCommandBaseCodec(C cmd) {
-    super(cmd);
-  }
+    protected CommandHandlerState commandHandlerState = CommandHandlerState.HANDLING_COLUMN_DEFINITION;
+    protected ColumnMetaData columnDefinitions;
+    protected RowResultDecoder<?, T> decoder;
+    private int currentColumn;
+    private CCSIDManager ccsidManager = new CCSIDManager();
 
-  private static <A, T> T emptyResult(Collector<Row, A, T> collector) {
-    return collector.finisher().apply(collector.supplier().get());
-  }
+    QueryCommandBaseCodec(C cmd) {
+        super(cmd);
+    }
 
-  @Override
-  void decodePayload(ByteBuf payload, int payloadLength) {
-      try {
-      System.out.println("@AGG decode QueryCommandBaseCodec");
-      DB2Codec.dumpBuffer(payload);
-      DRDAQueryResponse resp = new DRDAQueryResponse(payload, new CCSIDManager());
-      resp.readPrepareDescribeOutput();
-      //resp.readOpenQuery();
-      resp.readBeginOpenQuery();
-      System.out.println("@AGG read query");
-      
-      columnDefinitions = resp.getColumnMetaData();
-      decoder = new RowResultDecoder<>(cmd.collector(), new DB2RowDesc(columnDefinitions), resp.getCursor(), resp);
-      System.out.println("@AGG done with everything");
-      
-//      decoder.handleRow(len, in);
-      decoder.handleRow(columnDefinitions.columns_, payload);
-      
-      int updatedCount = 0; // @AGG hardcoded to 0
-      T result;
-      Throwable failure;
-      int size;
-      RowDesc rowDesc;
-      failure = decoder.complete();
-      result = decoder.result();
-      rowDesc = decoder.rowDesc;
-      size = decoder.size();
-      System.out.println("@AGG size=" + size);
-      decoder.reset();
-      
-      cmd.resultHandler().handleResult(updatedCount, size, rowDesc, result, failure);
-      
-      completionHandler.handle(CommandResponse.success(true));
-      } catch(Throwable t) {
-          t.printStackTrace();
-          completionHandler.handle(CommandResponse.failure(t));
-      }
+    private static <A, T> T emptyResult(Collector<Row, A, T> collector) {
+        return collector.finisher().apply(collector.supplier().get());
+    }
 
-      // resultSet_ is null if open query failed.
-      // check for null resultSet_ before using it.
-      // the first rowset comes back on OPEN for static non-rowset cursors.
-      // no row is returned on open for rowset cursors.
-//      if (resultSet_ != null) {
-//          resultSet_.parseScrollableRowset();
+    @Override
+    void decodePayload(ByteBuf payload, int payloadLength) {
+        if (DRDAQueryRequest.isQuery(cmd.sql()))
+            decodeQuery(payload);
+        else
+            decodeUpdate(payload);
+    }
+    
+    private void decodeUpdate(ByteBuf payload) {
+        System.out.println("@AGG decode update");
+        DRDAQueryResponse updateResponse = new DRDAQueryResponse(payload, ccsidManager);
+        int updatedCount = (int) updateResponse.readExecuteImmediate();
+        // TODO: If auto-generated keys, read an OPNQRY here
+        // readOpenQuery()
+        updateResponse.readLocalCommit();
+        
+        T result = emptyResult(cmd.collector());
+        cmd.resultHandler().handleResult(updatedCount, 0, null, result, null);
+        completionHandler.handle(CommandResponse.success(true));
+    }
 
-          // DERBY-1183: If we set it up it earlier, the entry in
-          // clientCursorNameCache_ gets wiped out by the closing of
-          // result sets happening during readCloseResultSets above
-          // because ResultSet#markClosed calls
-          // Statement#removeClientCursorNameFromCache.
-//          setupCursorNameCacheAndMappings();
-      
-      
-      
-//    switch (commandHandlerState) {
-//      case INIT:
-//        handleInitPacket(payload);
-//        break;
-//      case HANDLING_COLUMN_DEFINITION:
-//        handleResultsetColumnDefinitions(payload);
-//        break;
-//      case COLUMN_DEFINITIONS_DECODING_COMPLETED:
-//        skipEofPacketIfNeeded(payload);
-//        handleResultsetColumnDefinitionsDecodingCompleted();
-//        break;
-//      case HANDLING_ROW_DATA_OR_END_PACKET:
-//        handleRows(payload, payloadLength, this::handleSingleRow);
-//        break;
-//    }
-  }
-
-//  protected abstract void handleInitPacket(ByteBuf payload);
-//
-//  protected void handleResultsetColumnCountPacketBody(ByteBuf payload) {
-//    int columnCount = decodeColumnCountPacketPayload(payload);
-//    commandHandlerState = CommandHandlerState.HANDLING_COLUMN_DEFINITION;
-//    columnDefinitions = new ColumnDefinition[columnCount];
-//  }
-//
-//  protected void handleResultsetColumnDefinitions(ByteBuf payload) {
-//    ColumnDefinition def = decodeColumnDefinitionPacketPayload(payload);
-//    columnDefinitions[currentColumn++] = def;
-//    if (currentColumn == columnDefinitions.length) {
-//      // all column definitions have been decoded, switch to column definitions decoding completed state
-//      if (isDeprecatingEofFlagEnabled()) {
-//        // we enabled the DEPRECATED_EOF flag and don't need to accept an EOF_Packet
-//        handleResultsetColumnDefinitionsDecodingCompleted();
-//      } else {
-//        // we need to decode an EOF_Packet before handling rows, to be compatible with MySQL version below 5.7.5
-//        commandHandlerState = CommandHandlerState.COLUMN_DEFINITIONS_DECODING_COMPLETED;
-//      }
-//    }
-//  }
-//
-//  protected void handleResultsetColumnDefinitionsDecodingCompleted() {
-//    commandHandlerState = CommandHandlerState.HANDLING_ROW_DATA_OR_END_PACKET;
-//    decoder = new RowResultDecoder<>(cmd.collector(), /*cmd.isSingleton()*/ new MySQLRowDesc(columnDefinitions, format));
-//  }
-//
-//  protected void handleRows(ByteBuf payload, int payloadLength, Consumer<ByteBuf> singleRowHandler) {
-//  /*
-//    Resultset row can begin with 0xfe byte (when using text protocol with a field length > 0xffffff)
-//    To ensure that packets beginning with 0xfe correspond to the ending packet (EOF_Packet or OK_Packet with a 0xFE header),
-//    the packet length must be checked and must be less than 0xffffff in length.
-//   */
-//    int first = payload.getUnsignedByte(payload.readerIndex());
-//    if (first == ERROR_PACKET_HEADER) {
-//      handleErrorPacketPayload(payload);
-//    }
-//    // enabling CLIENT_DEPRECATE_EOF capability will receive an OK_Packet with a EOF_Packet header here
-//    // we need check this is not a row data by checking packet length < 0xFFFFFF
-//    else if (first == EOF_PACKET_HEADER && payloadLength < 0xFFFFFF) {
-//      int serverStatusFlags;
-//      int affectedRows = -1;
-//      int lastInsertId = -1;
-//      if (isDeprecatingEofFlagEnabled()) {
-//        OkPacket okPacket = decodeOkPacketPayload(payload, StandardCharsets.UTF_8);
-//        serverStatusFlags = okPacket.serverStatusFlags();
-//        affectedRows = (int) okPacket.affectedRows();
-//        lastInsertId = (int) okPacket.lastInsertId();
-//      } else {
-//        serverStatusFlags = decodeEofPacketPayload(payload).serverStatusFlags();
-//      }
-//      handleSingleResultsetDecodingCompleted(serverStatusFlags, affectedRows, lastInsertId);
-//    } else {
-//      singleRowHandler.accept(payload);
-//    }
-//  }
-//
-//  protected void handleSingleRow(ByteBuf payload) {
-//    // accept a row data
-//    decoder.handleRow(columnDefinitions.length, payload);
-//  }
-//
-//  protected void handleSingleResultsetDecodingCompleted(int serverStatusFlags, int affectedRows, int lastInsertId) {
-//    handleSingleResultsetEndPacket(serverStatusFlags, affectedRows, lastInsertId);
-//    resetIntermediaryResult();
-//    if (isDecodingCompleted(serverStatusFlags)) {
-//      // no more sql result
-//      handleAllResultsetDecodingCompleted();
-//    }
-//  }
-//
-//  protected boolean isDecodingCompleted(int serverStatusFlags) {
-//    return (serverStatusFlags & ServerStatusFlags.SERVER_MORE_RESULTS_EXISTS) == 0;
-//  }
-//
-//  private void handleSingleResultsetEndPacket(int serverStatusFlags, int affectedRows, int lastInsertId) {
-//    this.result = (serverStatusFlags & ServerStatusFlags.SERVER_STATUS_LAST_ROW_SENT) == 0;
-//    T result;
-//    Throwable failure;
-//    int size;
-//    RowDesc rowDesc;
-//    if (decoder != null) {
-//      failure = decoder.complete();
-//      result = decoder.result();
-//      rowDesc = decoder.rowDesc;
-//      size = decoder.size();
-//      decoder.reset();
-//    } else {
-//      result = emptyResult(cmd.collector());
-//      failure = null;
-//      size = 0;
-//      rowDesc = null;
-//    }
-//    cmd.resultHandler().handleResult(affectedRows, size, rowDesc, result, failure);
-//    cmd.resultHandler().addProperty(MySQLClient.LAST_INSERTED_ID, lastInsertId);
-//  }
-//
-//  private void handleAllResultsetDecodingCompleted() {
-//    CommandResponse<Boolean> response;
-//    if (this.failure != null) {
-//      response = CommandResponse.failure(this.failure);
-//    } else {
-//      response = CommandResponse.success(this.result);
-//    }
-//    completionHandler.handle(response);
-//  }
-//
-//  private int decodeColumnCountPacketPayload(ByteBuf payload) {
-//    long columnCount = BufferUtils.readLengthEncodedInteger(payload);
-//    return (int) columnCount;
-//  }
-//
-//  private void resetIntermediaryResult() {
-//    commandHandlerState = CommandHandlerState.INIT;
-//    columnDefinitions = null;
-//    currentColumn = 0;
-//  }
-//
-//  protected enum CommandHandlerState {
-//    INIT,
-//    HANDLING_COLUMN_DEFINITION,
-//    COLUMN_DEFINITIONS_DECODING_COMPLETED,
-//    HANDLING_ROW_DATA_OR_END_PACKET
-//  }
+    private void decodeQuery(ByteBuf payload) {
+        System.out.println("@AGG decode QueryCommandBaseCodec state=" + commandHandlerState);
+        switch (commandHandlerState) {
+        case HANDLING_COLUMN_DEFINITION:
+            DRDAQueryResponse resp = new DRDAQueryResponse(payload, ccsidManager);
+            resp.readPrepareDescribeOutput();
+            resp.readBeginOpenQuery();
+            columnDefinitions = resp.getColumnMetaData();
+            decoder = new RowResultDecoder<>(cmd.collector(), new DB2RowDesc(columnDefinitions), resp.getCursor(),
+                    resp);
+            commandHandlerState = CommandHandlerState.HANDLING_ROW_DATA;
+//            return;
+//        case HANDLING_ROW_DATA:
+            while (decoder.next()) {
+                decoder.handleRow(columnDefinitions.columns_, payload);
+            }
+            if (decoder.isQueryComplete())
+                decoder.cursor.setAllRowsReceivedFromServer(true);
+            else
+                throw new UnsupportedOperationException("Need to fetch more data from DB");
+            commandHandlerState = CommandHandlerState.HANDLING_END_OF_QUERY;
+//            decodeQuery(payload);
+//            return;
+//        case HANDLING_END_OF_QUERY:
+            int updatedCount = 0; // @AGG hardcoded to 0
+            T result;
+            Throwable failure;
+            int size;
+            RowDesc rowDesc;
+            failure = decoder.complete();
+            result = decoder.result();
+            rowDesc = decoder.rowDesc;
+            size = decoder.size();
+            decoder.reset();
+            cmd.resultHandler().handleResult(updatedCount, size, rowDesc, result, failure);
+            completionHandler.handle(CommandResponse.success(true));
+            return;
+        default:
+            throw new IllegalStateException("Unknown state: " + commandHandlerState);
+        }
+    }
+    
+    @Override
+    public String toString() {
+        return super.toString() + " sql=" + cmd.sql();
+    }
 }

@@ -4,7 +4,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.util.concurrent.CompletableFuture;
 
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.db2client.DB2ConnectOptions;
@@ -41,10 +43,13 @@ public class DB2Examples {
             // con.createStatement().execute("CREATE TABLE users ( id varchar(50) )");
             // con.createStatement().execute("INSERT INTO users VALUES ('andy')");
             // con.createStatement().execute("INSERT INTO users VALUES ('julien')");
+            // con.createStatement().execute("INSERT INTO users VALUES ('bob')");
+            // con.createStatement().execute("INSERT INTO users VALUES ('chuck')");
             Statement stmt = con.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM users WHERE id='andy'");
-            if (rs.next())
-                System.out.println("Got result: " + rs.getString(1));
+            // ResultSet rs = stmt.executeQuery("SELECT * FROM users WHERE id='andy'");
+            ResultSet rs = stmt.executeQuery("SELECT * FROM users");
+            while (rs.next())
+                System.out.println("Got JDBC result: " + rs.getString(1));
         }
     }
 
@@ -65,27 +70,64 @@ public class DB2Examples {
 
         System.out.println("Created pool");
 
-        // client.query("CREATE TABLE IF NOT EXISTS users ( id varchar(50) )", ar -> {
-        // if (ar.succeeded()) {
-        // System.out.println("Created table");
-        // } else {
-        // System.out.println("Create failed: " + ar.cause());
-        // }
-        // });
-        //
-        // client.query("INSERT INTO users VALUES ('julien')", ar -> {
-        // if (ar.succeeded()) {
-        // System.out.println("inserted julien");
-        // } else {
-        // System.out.println("inserted failed: " + ar.cause());
-        // }
-        // });
+        client.query("CREATE TABLE IF NOT EXISTS users ( id varchar(50) )", ar -> {
+            if (ar.succeeded()) {
+                System.out.println("Created table");
+            } else {
+                System.out.println("Create failed: " + ar.cause());
+            }
+        });
 
-        // A simple query
+        client.query("INSERT INTO users VALUES ('andy5')", ar -> {
+            System.out.println("INSERT results");
+            dumpResults(ar);
+        });
+        
+        client.query("SELECT * FROM users", ar2 -> {
+            System.out.println("SELECT results");
+            dumpResults(ar2);
+        });
+        
+        client.query("DELETE FROM users WHERE id='andy5'", ar3 -> {
+            System.out.println("DELETE results");
+            dumpResults(ar3);
+        });
+        
+        waitFor(750);
+        client.close();
+    }
+    
+    private static void waitFor(int ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void dumpResults(AsyncResult<RowSet<Row>> ar) {
+        try {
+            if (ar.succeeded()) {
+                RowSet<Row> result = ar.result();
+                System.out.println("result=" + result);
+                System.out.println("  rows=" + result.rowCount());
+                System.out.println("  size=" + result.size());
+                System.out.println(" names=" + result.columnsNames());
+                for (Row row : result) {
+                    System.out.println("  row=" + row);
+                    System.out.println("    name=" + row.getColumnName(0));
+                    System.out.println("    value=" + row.getString(0));
+                }
+            } else {
+                System.out.println("Failure: " + ar.cause().getMessage());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void selectAll(DB2Pool client) {
         client.query("SELECT * FROM users", ar -> {
-            // client.query("SELECT * FROM users WHERE id='andy'", ar -> {
-            System.out.println("INSIDE QUERY CLOSURE");
-            System.out.println("succeeded=" + ar.succeeded());
             try {
                 if (ar.succeeded()) {
                     RowSet<Row> result = ar.result();
@@ -101,14 +143,10 @@ public class DB2Examples {
                 } else {
                     System.out.println("Failure: " + ar.cause().getMessage());
                 }
-
-                // Now close the pool
-                client.close();
             } catch (Throwable t) {
                 t.printStackTrace();
             }
         });
-
     }
 
 }

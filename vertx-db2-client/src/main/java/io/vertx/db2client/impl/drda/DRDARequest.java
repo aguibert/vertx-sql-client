@@ -63,7 +63,7 @@ public abstract class DRDARequest {
             boolean nextHasSameCorrelator, int dssType, int corrId, boolean simpleFinalizeBuildingNextDss) {
         if (doesRequestContainData()) {
             if (simpleDssFinalize) {
-                finalizeDssLength();
+                completeCommand();
             } else {
                 finalizePreviousChainedDss(dssHasSameCorrelator);
             }
@@ -119,7 +119,7 @@ public abstract class DRDARequest {
     // bytes and chaining bits.
     private final void finalizePreviousChainedDss(boolean dssHasSameCorrelator) {
 
-        finalizeDssLength();
+        completeCommand();
         int pos = dssLengthLocation_ + 3;
         byte value = buffer.getByte(pos);
         value |= 0x40;
@@ -144,7 +144,7 @@ public abstract class DRDARequest {
      * Note: In the future, we may try to optimize this approach
      * in an attempt to avoid these shifts.
      */
-    final void finalizeDssLength() {
+    public final void completeCommand() {
         // calculate the total size of the dss and the number of bytes which would
         // require continuation dss headers.  The total length already includes the
         // the 6 byte dss header located at the beginning of the dss.  It does not
@@ -407,7 +407,7 @@ public abstract class DRDARequest {
     
     // insert a 4 byte length/codepoint pair and a 1 byte unsigned value into the buffer.
     // total of 5 bytes inserted in buffer.
-    protected final void writeScalar1Byte(int codePoint, int value) {
+    final void writeScalar1Byte(int codePoint, int value) {
         ensureLength(5);
         buffer.writeByte((byte) 0x00);
         buffer.writeByte((byte) 0x05);
@@ -425,7 +425,7 @@ public abstract class DRDARequest {
     
     // insert a 4 byte length/codepoint pair and a 4 byte unsigned value into the
     // buffer.  total of 8 bytes inserted in the buffer.
-    protected final void writeScalar4Bytes(int codePoint, long value) {
+    final void writeScalar4Bytes(int codePoint, long value) {
         ensureLength(8);
         buffer.writeByte((byte) 0x00);
         buffer.writeByte((byte) 0x08);

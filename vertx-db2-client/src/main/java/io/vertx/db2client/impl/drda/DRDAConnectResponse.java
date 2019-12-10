@@ -39,6 +39,227 @@ public class DRDAConnectResponse extends DRDAResponse {
 //        agent_.checkForChainBreakingException_();
     }
     
+    public void readLocalCommit() {
+        startSameIdChainParse();
+        parseRDBCMMreply();
+        endOfSameIdChainData();
+    }
+    
+    // Parse the reply for the RDB Commit Unit of Work Command.
+    // This method handles the parsing of all command replies and reply data
+    // for the rdbcmm command.
+    private void parseRDBCMMreply(/*ConnectionCallbackInterface connection*/) {
+        parseTypdefsOrMgrlvlovrs();
+
+        parseENDUOWRM();
+        int peekCP = parseTypdefsOrMgrlvlovrs();
+
+        if (peekCP == CodePoint.SQLCARD) {
+            NetSqlca netSqlca = parseSQLCARD(null);
+//            connection.completeSqlca(netSqlca);
+        } else {
+            parseCommitError();
+        }
+    }
+    
+    private void parseCommitError() {
+        int peekCP = peekCodePoint();
+        switch (peekCP) {
+        case CodePoint.ABNUOWRM:
+            throw new IllegalStateException("Abnormal ending to UOW");
+//            NetSqlca sqlca = parseAbnormalEndUow(null);
+//            connection.completeSqlca(sqlca);
+//            break;
+        case CodePoint.CMDCHKRM:
+            parseCMDCHKRM();
+            break;
+        case CodePoint.RDBNACRM:
+            parseRDBNACRM();
+            break;
+        default:
+            throwUnknownCodepoint(peekCP);
+//            parseCommonError(peekCP);
+            break;
+        }
+    }
+    
+    // RDB Not Accessed Reply Message indicates that the access relational
+    // database command (ACCRDB) was not issued prior to a command
+    // requesting the RDB Services.
+    // PROTOCOL Architects an SQLSTATE of 58008 or 58009.
+    //
+    // Messages
+    // SQLSTATE : 58009
+    //     Execution failed due to a distribution protocol error that caused deallocation of the conversation.
+    //     SQLCODE : -30020
+    //     Execution failed because of a Distributed Protocol
+    //         Error that will affect the successful execution of subsequent
+    //         commands and SQL statements: Reason Code <reason-code>.
+    //      Some possible reason codes include:
+    //      121C Indicates that the user is not authorized to perform the requested command.
+    //      1232 The command could not be completed because of a permanent error.
+    //          In most cases, the server will be in the process of an abend.
+    //      220A The target server has received an invalid data description.
+    //          If a user SQLDA is specified, ensure that the fields are
+    //          initialized correctly. Also, ensure that the length does not
+    //          exceed the maximum allowed length for the data type being used.
+    //
+    //      The command or statement cannot be processed.  The current
+    //      transaction is rolled back and the application is disconnected
+    //      from the remote database.
+    //
+    //
+    // Returned from Server:
+    // SVRCOD - required  (8 - ERROR)
+    // RDBNAM - required
+    //
+    // Called by all the NET*Reply classes.
+    void parseRDBNACRM() {
+        boolean svrcodReceived = false;
+        int svrcod = CodePoint.SVRCOD_INFO;
+        boolean rdbnamReceived = false;
+        String rdbnam = null;
+
+        parseLengthAndMatchCodePoint(CodePoint.RDBNACRM);
+        pushLengthOnCollectionStack();
+        int peekCP = peekCodePoint();
+
+        while (peekCP != END_OF_COLLECTION) {
+
+            boolean foundInPass = false;
+
+            if (peekCP == CodePoint.SVRCOD) {
+                foundInPass = true;
+                svrcodReceived = checkAndGetReceivedFlag(svrcodReceived);
+                svrcod = parseSVRCOD(CodePoint.SVRCOD_ERROR, CodePoint.SVRCOD_ERROR);
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.RDBNAM) {
+                foundInPass = true;
+                rdbnamReceived = checkAndGetReceivedFlag(rdbnamReceived);
+                rdbnam = parseRDBNAM(true);
+                peekCP = peekCodePoint();
+            }
+
+            if (!foundInPass) {
+                throwUnknownCodepoint(peekCP);
+            }
+
+        }
+        popCollectionStack();
+        if (!svrcodReceived)
+            throwMissingRequiredCodepoint("SVRCOD", CodePoint.SVRCOD);
+        if (!rdbnamReceived)
+            throwMissingRequiredCodepoint("RDBNAM", CodePoint.RDBNAM);
+
+//        netAgent_.setSvrcod(svrcod);
+        throw new IllegalStateException("SQLState.DRDA_CONNECTION_TERMINATED");
+//        agent_.accumulateChainBreakingReadExceptionAndThrow(
+//            new DisconnectException(agent_,
+//                new ClientMessageId(SQLState.DRDA_CONNECTION_TERMINATED),
+//                msgutil_.getTextMessage(MessageId.CONN_DRDA_RDBNACRM)));            
+    }
+
+    
+    // Command Check Reply Message indicates that the requested
+    // command encountered an unarchitected and implementation-specific
+    // condition for which there is no architected message.  If the severity
+    // code value is ERROR or greater, the command has failed.  The
+    // message can be accompanied by other messages that help to identify
+    // the specific condition.
+    // The CMDCHKRM should not be used as a general catch-all in place of
+    // product-defined messages when using product extensions to DDM.
+    // PROTOCOL architects the SQLSTATE value depending on SVRCOD
+    // SVRCOD 0 -> SQLSTATE is not returned
+    // SVRCOD 8 -> SQLSTATE of 58008 or 58009
+    // SVRCOD 16,32,64,128 -> SQLSTATE of 58009
+    //
+    // Messages
+    //   SQLSTATE : 58009
+    //     Execution failed due to a distribution protocol error that caused deallocation of the conversation.
+    //     SQLCODE : -30020
+    //     Execution failed because of a Distributed Protocol
+    //       Error that will affect the successful execution of subsequent
+    //       commands and SQL statements: Reason Code <reason-code>.
+    //     Some possible reason codes include:
+    //       121C Indicates that the user is not authorized to perform the requested command.
+    //       1232 The command could not be completed because of a permanent error.
+    //         In most cases, the server will be in the process of an abend.
+    //       220A The target server has received an invalid data description.
+    //         If a user SQLDA is specified, ensure that the fields are
+    //         initialized correctly. Also, ensure that the length does not
+    //         exceed the maximum allowed length for the data type being used.
+    //
+    // The command or statement cannot be processed.  The current
+    // transaction is rolled back and the application is disconnected
+    //  from the remote database.
+    //
+    //
+    // Returned from Server:
+    //   SVRCOD - required  (0 - INFO, 4 - WARNING, 8 - ERROR, 16 - SEVERE,
+    //                       32 - ACCDMG, 64 - PRMDMG, 128 - SESDMG))
+    //   RDBNAM - optional (MINLVL 3)
+    //   RECCNT - optional (MINVAL 0, MINLVL 3)
+    //
+    // Called by all the Reply classesCMDCHKRM
+    void parseCMDCHKRM() {
+        boolean svrcodReceived = false;
+        int svrcod = CodePoint.SVRCOD_INFO;
+        boolean rdbnamReceived = false;
+        String rdbnam = null;
+        parseLengthAndMatchCodePoint(CodePoint.CMDCHKRM);
+        pushLengthOnCollectionStack();
+        int peekCP = peekCodePoint();
+
+        while (peekCP != END_OF_COLLECTION) {
+
+            boolean foundInPass = false;
+
+            if (peekCP == CodePoint.SVRCOD) {
+                foundInPass = true;
+                svrcodReceived = checkAndGetReceivedFlag(svrcodReceived);
+                svrcod = parseSVRCOD(CodePoint.SVRCOD_INFO, CodePoint.SVRCOD_SESDMG);
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.RDBNAM) {
+                foundInPass = true;
+                rdbnamReceived = checkAndGetReceivedFlag(rdbnamReceived);
+                rdbnam = parseRDBNAM(true);
+                peekCP = peekCodePoint();
+            }
+            // skip over the RECCNT since it can't be found in the DDM book.
+
+            if (peekCP == 0x115C) {
+                foundInPass = true;
+                parseLengthAndMatchCodePoint(0x115C);
+                skipBytes();
+                peekCP = peekCodePoint();
+            }
+
+            if (!foundInPass) {
+                throwUnknownCodepoint(peekCP);
+            }
+
+        }
+        popCollectionStack();
+        if (!svrcodReceived)
+            throwMissingRequiredCodepoint("SVRCOD", CodePoint.SVRCOD);
+
+//        netAgent_.setSvrcod(svrcod);
+        NetSqlca netSqlca = parseSQLCARD(null); 
+//        netAgent_.netConnection_.completeSqlca(netSqlca);
+
+        throw new IllegalStateException("SQLState.DRDA_CONNECTION_TERMINATED");
+//        agent_.accumulateChainBreakingReadExceptionAndThrow(
+//            new DisconnectException(
+//                agent_,
+//                new ClientMessageId(SQLState.DRDA_CONNECTION_TERMINATED),
+//                new SqlException(agent_.logWriter_, netSqlca),
+//                msgutil_.getTextMessage(MessageId.CONN_DRDA_CMDCHKRM)));
+    }
+    
     // Parse the reply for the Access RDB Command.
     // This method handles the parsing of all command replies and reply data
     // for the accrdb command.
@@ -57,7 +278,7 @@ public class DRDAConnectResponse extends DRDAResponse {
 
         parseTypdefsOrMgrlvlovrs();
         NetSqlca netSqlca = parseSQLCARD(null);
-        completeSqlca(netSqlca);
+        NetSqlca.complete(netSqlca);
         return accessData;
     }
     
@@ -90,7 +311,6 @@ public class DRDAConnectResponse extends DRDAResponse {
                    break;
                case CodePoint.PBSD_SCHEMA:
                    String pbSchema = readString(getDdmLength(), CCSIDManager.UTF8);
-                   System.out.println("@AGG got piggyback schema: " + pbSchema);
 //                   netAgent_.netConnection_.
 //                       completeInitialPiggyBackSchema
 //                           (readString(getDdmLength(), Typdef.UTF8ENCODING));

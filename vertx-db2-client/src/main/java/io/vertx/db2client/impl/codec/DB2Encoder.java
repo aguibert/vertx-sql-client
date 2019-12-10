@@ -65,8 +65,8 @@ class DB2Encoder extends ChannelOutboundHandlerAdapter {
 //      return new ExtendedQueryCommandCodec((ExtendedQueryCommand) cmd);
 //    } else if (cmd instanceof ExtendedBatchQueryCommand<?>) {
 //      return new ExtendedBatchQueryCommandCodec<>((ExtendedBatchQueryCommand<?>) cmd);
-//    } else if (cmd instanceof CloseConnectionCommand) {
-//      return new CloseConnectionCommandCodec((CloseConnectionCommand) cmd);
+    } else if (cmd instanceof CloseConnectionCommand) {
+      return new CloseConnectionCommandCodec((CloseConnectionCommand) cmd);
 //    } else if (cmd instanceof PrepareStatementCommand) {
 //      return new PrepareStatementCodec((PrepareStatementCommand) cmd);
 //    } else if (cmd instanceof CloseStatementCommand) {

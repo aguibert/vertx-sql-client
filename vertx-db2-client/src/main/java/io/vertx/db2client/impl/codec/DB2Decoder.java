@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
+import io.vertx.sqlclient.impl.command.CommandResponse;
 
 import static io.vertx.db2client.impl.codec.Packets.*;
 
@@ -24,10 +25,11 @@ class DB2Decoder extends ByteToMessageDecoder {
 
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
-        System.out.println("@AGG received bytes: " + in);
 //        InitialHandshakeCommandCodec.dumpBuffer(in);
         // TODO: do we need to handle split packets?
-        decodePayload(in, in.readableBytes(), in.getShort(in.readerIndex() + 4));
+        int payloadLength = computeLength(in);
+        System.out.println("@AGG received " + payloadLength + " bytes for " + inflight.peek());
+        decodePayload(in.readRetainedSlice(payloadLength), payloadLength, in.getShort(in.readerIndex() + 4));
 //        if (in.readableBytes() > 4) {
 //            int packetStartIdx = in.readerIndex();
 //            int payloadLength = in.readShort();
@@ -61,11 +63,37 @@ class DB2Decoder extends ByteToMessageDecoder {
 //            }
 //        }
     }
+    
+    private int computeLength(ByteBuf in) {
+        int index = 0;
+        boolean dssContinues = true;
+        while (dssContinues && index < in.readableBytes()) {
+            if (in.readableBytes() >= index + 3)
+                dssContinues &= (in.getByte(index + 3) & 0x40) == 0x40;
+            else
+                dssContinues = false;
+            int dssLen = in.getShort(index);
+            index += in.getShort(index);
+        }
+        return index;
+    }
 
     private void decodePayload(ByteBuf payload, int payloadLength, int sequenceId) {
         CommandCodec ctx = inflight.peek();
         ctx.sequenceId = sequenceId + 1; // TODO why increment by 1 here?
-        ctx.decodePayload(payload, payloadLength);
+        int start = payload.readerIndex();
+        try {
+            ctx.decodePayload(payload, payloadLength);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            ctx.completionHandler.handle(CommandResponse.failure(t));
+        }
         payload.clear();
+        payload.release();
+//        int readBytes = payload.readerIndex() - start;
+//        if (readBytes != payloadLength)
+//            System.out.println("WARNING: did not read all payload bytes: payload=" + payloadLength + " readBytes=" + readBytes + 
+//                    " (" + (payloadLength - readBytes) + " remain)");
+//        payload.discardReadBytes();
     }
 }

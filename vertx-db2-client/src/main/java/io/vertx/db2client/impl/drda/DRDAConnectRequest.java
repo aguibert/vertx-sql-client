@@ -3,8 +3,6 @@ package io.vertx.db2client.impl.drda;
 import java.sql.SQLException;
 import java.util.Objects;
 
-import org.apache.derby.client.net.SQLState;
-
 import io.netty.buffer.ByteBuf;
 
 public class DRDAConnectRequest extends DRDARequest {
@@ -92,8 +90,6 @@ public class DRDAConnectRequest extends DRDARequest {
         // the command and the dss are complete so make the call to notify
         // the request object.
         updateLengthBytes();
-        
-        finalizeDssLength(); // @AGG added
     }
     
     public void buildSECCHK(int secmec, String rdbnam, String user, String password, byte[] sectkn, byte[] sectkn2){
@@ -149,8 +145,19 @@ public class DRDAConnectRequest extends DRDARequest {
         // the accsec command is complete so notify the the request object to
         // update the ddm length and the dss header length.
         updateLengthBytes();
-        
-        finalizeDssLength(); // @AGG added
+    }
+    
+    /** 
+     * RDB Commit Unit of Work (RDBCMM) Command commits all work performed
+     for the current unit of work.
+    
+     The Relational Database Name (RDBNAM) is an optional parameter
+     which will not be sent by this command to reduce size, building,
+     and parsing.
+     * */
+    public void buildRDBCMM() {
+        createCommand();
+        writeLengthCodePoint(0x04, CodePoint.RDBCMM);
     }
     
     private void buildRDBALWUPD(boolean readOnly) {

@@ -5,12 +5,14 @@ import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.Reader;
 import java.io.StringReader;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.sql.Array;
 import java.sql.Blob;
@@ -162,7 +164,6 @@ public class Cursor {
     //---------------------constructors/finalizer---------------------------------
 
     public void setNumberOfColumns(int numberOfColumns) {
-        System.out.println("@AGG set columns=" + numberOfColumns);
         columnDataPosition_ = new int[numberOfColumns];
         columnDataComputedLength_ = new int[numberOfColumns];
 
@@ -205,7 +206,9 @@ public class Cursor {
             if (allRowsReceivedFromServer_) {
                 return false;
             }
-            getMoreData_();
+            return false;
+            // @AGG not implementing this code path, let other objects flow a fetch
+            // getMoreData_();
         }
 
         // The parameter passed in here is used as an index into the cached rowset for
@@ -367,48 +370,35 @@ public class Cursor {
 //                columnDataPosition_[column - 1]);
     }
 
-//    // Build a java.math.BigDecimal from a fixed point decimal byte representation.
-//    private final BigDecimal get_DECIMAL(int column) throws SQLException {
-//        return Decimal.getBigDecimal(dataBuffer_,
-//                columnDataPosition_[column - 1],
-//                getColumnPrecision(column - 1),
-//                getColumnScale(column - 1));
-//    }
-//
-//
-//    // Build a Java double from a fixed point decimal byte representation.
-//    private double getDoubleFromDECIMAL(int column) throws SQLException {
-//        try {
-//            return Decimal.getDouble(dataBuffer_,
-//                    columnDataPosition_[column - 1],
-//                    getColumnPrecision(column - 1),
-//                    getColumnScale(column - 1));
-//        } catch (IllegalArgumentException e) {
-//            throw new SQLException(agent_.logWriter_, 
-//                new ClientMessageId (SQLState.LANG_OUTSIDE_RANGE_FOR_DATATYPE),
-//                e, "double");
-//        }
-//    }
-//
-//    // Build a Java long from a fixed point decimal byte representation.
-//    private long getLongFromDECIMAL(int column, String targetType)
-//            throws SQLException {
-//        try {
-//            return Decimal.getLong(dataBuffer_,
-//                    columnDataPosition_[column - 1],
-//                    getColumnPrecision(column - 1),
-//                    getColumnScale(column - 1));
-//        } catch (ArithmeticException e) {
-//            throw new SQLException(agent_.logWriter_,
-//                new ClientMessageId (SQLState.LANG_OUTSIDE_RANGE_FOR_DATATYPE),
-//                e, targetType);
-//        } catch (IllegalArgumentException e) {
-//            throw new SQLException(agent_.logWriter_,
-//                new ClientMessageId (SQLState.LANG_OUTSIDE_RANGE_FOR_DATATYPE),
-//                e, targetType);
-//        }
-//    }
+    // Build a java.math.BigDecimal from a fixed point decimal byte representation.
+    private final BigDecimal get_DECIMAL(int column) {
+        return Decimal.getBigDecimal(dataBuffer_,
+                columnDataPosition_[column - 1],
+                getColumnPrecision(column - 1),
+                getColumnScale(column - 1));
+    }
 
+
+    // Build a Java double from a fixed point decimal byte representation.
+    private double getDoubleFromDECIMAL(int column) {
+        return Decimal.getDouble(dataBuffer_,
+                columnDataPosition_[column - 1],
+                getColumnPrecision(column - 1),
+                getColumnScale(column - 1));
+    }
+
+    // Build a Java long from a fixed point decimal byte representation.
+    private long getLongFromDECIMAL(int column, String targetType) {
+        try {
+            return Decimal.getLong(dataBuffer_,
+                    columnDataPosition_[column - 1],
+                    getColumnPrecision(column - 1),
+                    getColumnScale(column - 1));
+        } catch (ArithmeticException | IllegalArgumentException e) {
+            throw new IllegalArgumentException("SQLState.LANG_OUTSIDE_RANGE_FOR_DATATYPE " + targetType, e);
+        }
+    }
+    
     // Build a Java String from a database VARCHAR or LONGVARCHAR field.
     //
     // Depending on the ccsid, length is the number of chars or number of bytes.
@@ -573,7 +563,7 @@ public class Cursor {
 
     // Deserialize a UDT from a database Types.JAVA_OBJECT field.
     // This is used for user defined types.
-    private Object get_UDT(int column) throws SQLException {
+    private Object get_UDT(int column) {
         byte[] bytes;
         int columnLength =
             (maxFieldSize_ == 0) ? columnDataComputedLength_[column - 1] - 2 :
@@ -584,12 +574,9 @@ public class Cursor {
         try {
             ByteArrayInputStream bais = new ByteArrayInputStream( bytes );
             ObjectInputStream ois = new ObjectInputStream( bais );
-
             return ois.readObject();
-        }
-        catch (Exception e)
-        {
-            throw new SQLException("SQLState.NET_MARSHALLING_UDT_ERROR", e);
+        } catch (IOException | ClassNotFoundException e) {
+            throw new IllegalStateException("SQLState.NET_MARSHALLING_UDT_ERROR", e);
         }
     }
 
@@ -621,288 +608,309 @@ public class Cursor {
 
     //------- the following getters perform any necessary cross-conversion _------
 
-//    final boolean getBoolean(int column) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return get_BOOLEAN(column);
-//        case Types.SMALLINT:
-//            return agent_.crossConverters_.getBooleanFromShort(get_SMALLINT(column));
-//        case Types.INTEGER:
-//            return agent_.crossConverters_.getBooleanFromInt(get_INTEGER(column));
-//        case Types.BIGINT:
-//            return agent_.crossConverters_.getBooleanFromLong(get_BIGINT(column));
-//        case Types.REAL:
-//            return agent_.crossConverters_.getBooleanFromFloat(get_FLOAT(column));
-//        case Types.DOUBLE:
-//            return agent_.crossConverters_.getBooleanFromDouble(get_DOUBLE(column));
-//        case Types.DECIMAL:
-//            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
-//            return agent_.crossConverters_.getBooleanFromLong(
-//                getLongFromDECIMAL(column, "boolean"));
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getBooleanFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getBooleanFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError( "boolean", column );
-//        }
-//    }
-//
-//    final byte getByte(int column) throws SQLException {
-//        // This needs to be changed to use jdbcTypes[]
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return agent_.crossConverters_.getByteFromBoolean(get_BOOLEAN(column));
-//        case Types.SMALLINT:
-//            return agent_.crossConverters_.getByteFromShort(get_SMALLINT(column));
-//        case Types.INTEGER:
-//            return agent_.crossConverters_.getByteFromInt(get_INTEGER(column));
-//        case Types.BIGINT:
-//            return agent_.crossConverters_.getByteFromLong(get_BIGINT(column));
-//        case Types.REAL:
-//            return agent_.crossConverters_.getByteFromFloat(get_FLOAT(column));
-//        case Types.DOUBLE:
-//            return agent_.crossConverters_.getByteFromDouble(get_DOUBLE(column));
-//        case Types.DECIMAL:
-//            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
-//            return agent_.crossConverters_.getByteFromLong(
-//                getLongFromDECIMAL(column, "byte"));
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getByteFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getByteFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError( "byte", column );
-//        }
-//    }
-//
-//    final short getShort(int column) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return agent_.crossConverters_.getShortFromBoolean(get_BOOLEAN(column));
-//        case Types.SMALLINT:
-//            return get_SMALLINT(column);
-//        case Types.INTEGER:
-//            return agent_.crossConverters_.getShortFromInt(get_INTEGER(column));
-//        case Types.BIGINT:
-//            return agent_.crossConverters_.getShortFromLong(get_BIGINT(column));
-//        case Types.REAL:
-//            return agent_.crossConverters_.getShortFromFloat(get_FLOAT(column));
-//        case Types.DOUBLE:
-//            return agent_.crossConverters_.getShortFromDouble(get_DOUBLE(column));
-//        case Types.DECIMAL:
-//            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
-//            return agent_.crossConverters_.getShortFromLong(
-//                getLongFromDECIMAL(column, "short"));
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getShortFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getShortFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError( "short", column );
-//        }
-//    }
-//
-//    final int getInt(int column) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return agent_.crossConverters_.getIntFromBoolean(get_BOOLEAN(column));
-//        case Types.SMALLINT:
-//            return (int) get_SMALLINT(column);
-//        case Types.INTEGER:
-//            return get_INTEGER(column);
-//        case Types.BIGINT:
-//            return agent_.crossConverters_.getIntFromLong(get_BIGINT(column));
-//        case Types.REAL:
-//            return agent_.crossConverters_.getIntFromFloat(get_FLOAT(column));
-//        case Types.DOUBLE:
-//            return agent_.crossConverters_.getIntFromDouble(get_DOUBLE(column));
-//        case Types.DECIMAL:
-//            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
-//            return agent_.crossConverters_.getIntFromLong(
-//                getLongFromDECIMAL(column, "int"));
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getIntFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getIntFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError(  "int", column );
-//        }
-//    }
-//
-//    final long getLong(int column) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return agent_.crossConverters_.getLongFromBoolean(get_BOOLEAN(column));
-//        case Types.SMALLINT:
-//            return (long) get_SMALLINT(column);
-//        case Types.INTEGER:
-//            return (long) get_INTEGER(column);
-//        case Types.BIGINT:
-//            return get_BIGINT(column);
-//        case Types.REAL:
-//            return agent_.crossConverters_.getLongFromFloat(get_FLOAT(column));
-//        case Types.DOUBLE:
-//            return agent_.crossConverters_.getLongFromDouble(get_DOUBLE(column));
-//        case Types.DECIMAL:
-//            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
-//            return getLongFromDECIMAL(column, "long");
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getLongFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getLongFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError( "long", column );
-//        }
-//    }
-//
-//    final float getFloat(int column) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return agent_.crossConverters_.getFloatFromBoolean(get_BOOLEAN(column));
-//        case Types.REAL:
-//            return get_FLOAT(column);
-//        case Types.DOUBLE:
-//            return agent_.crossConverters_.getFloatFromDouble(get_DOUBLE(column));
-//        case Types.DECIMAL:
-//            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
-//            return agent_.crossConverters_.getFloatFromDouble(getDoubleFromDECIMAL(column));
-//        case Types.SMALLINT:
-//            return (float) get_SMALLINT(column);
-//        case Types.INTEGER:
-//            return (float) get_INTEGER(column);
-//        case Types.BIGINT:
-//            return (float) get_BIGINT(column);
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getFloatFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getFloatFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError( "float", column );
-//        }
-//    }
-//
-//    final double getDouble(int column) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return agent_.crossConverters_.getDoubleFromBoolean(get_BOOLEAN(column));
-//        case Types.REAL:
-//            double d = (double) get_FLOAT(column);
-//            return d;
-//            //return (double) get_FLOAT (column);
-//        case Types.DOUBLE:
-//            return get_DOUBLE(column);
-//        case Types.DECIMAL:
-//            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
-//            return getDoubleFromDECIMAL(column);
-//        case Types.SMALLINT:
-//            return (double) get_SMALLINT(column);
-//        case Types.INTEGER:
-//            return (double) get_INTEGER(column);
-//        case Types.BIGINT:
-//            return (double) get_BIGINT(column);
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getDoubleFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getDoubleFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError( "double", column );
-//        }
-//    }
-//
-//    final BigDecimal getBigDecimal(int column) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.BOOLEAN:
-//            return BigDecimal.valueOf(getLong(column));
-//        case Types.DECIMAL:
-//            return get_DECIMAL(column);
-//        case Types.REAL:
-//            // Can't use the following commented out line because it changes precision of the result.
-//            //return new java.math.BigDecimal (get_FLOAT (column));
-//            float f = get_FLOAT(column);
-//            return new BigDecimal(String.valueOf(f));
-//        case Types.DOUBLE:
-//            return BigDecimal.valueOf(get_DOUBLE(column));
-//        case Types.SMALLINT:
-//            return BigDecimal.valueOf(get_SMALLINT(column));
-//        case Types.INTEGER:
-//            return BigDecimal.valueOf(get_INTEGER(column));
-//        case Types.BIGINT:
-//            return BigDecimal.valueOf(get_BIGINT(column));
-//        case Types.CHAR:
-//            return agent_.crossConverters_.getBigDecimalFromString(getCHAR(column));
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.getBigDecimalFromString(getVARCHAR(column));
-//        default:
-//            throw coercionError( "java.math.BigDecimal", column );
-//        }
-//    }
-//
-//    final Date getDate(int column, Calendar cal) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.DATE:
+    final boolean getBoolean(int column) {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return get_BOOLEAN(column);
+        case Types.SMALLINT:
+            return get_SMALLINT(column) != 0;
+        case Types.INTEGER:
+            return get_INTEGER(column) != 0;
+        case Types.BIGINT:
+            return get_BIGINT(column) != 0;
+        case Types.REAL:
+            return get_FLOAT(column) != 0;
+        case Types.DOUBLE:
+            return get_DOUBLE(column) != 0;
+        case Types.DECIMAL:
+            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
+            return getLongFromDECIMAL(column, "boolean") != 0;
+        case Types.CHAR:
+            String trimmedChar = getCHAR(column);
+            return !(trimmedChar.equals("0") || trimmedChar.equals("false"));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            String trimmed = getVARCHAR(column);
+            return !(trimmed.equals("0") || trimmed.equals("false"));
+        default:
+            throw coercionError( "boolean", column );
+        }
+    }
+
+    final byte getByte(int column) {
+        // This needs to be changed to use jdbcTypes[]
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return CrossConverters.getByteFromBoolean(get_BOOLEAN(column));
+        case Types.SMALLINT:
+            int smallInt = get_SMALLINT(column);
+            if (smallInt > Byte.MAX_VALUE || smallInt < Byte.MIN_VALUE)
+                throw new IllegalArgumentException("Value outside of byte range: " + smallInt);
+            return (byte) smallInt;
+        case Types.INTEGER:
+            int i = get_INTEGER(column);
+            if (i > Byte.MAX_VALUE || i < Byte.MIN_VALUE)
+                throw new IllegalArgumentException("Value outside of byte range: " + i);
+            return (byte) i;
+        case Types.BIGINT:
+            long l = get_BIGINT(column);
+            if (l > Byte.MAX_VALUE || l < Byte.MIN_VALUE)
+                throw new IllegalArgumentException("Value outside of byte range: " + l);
+            return (byte) l;
+        case Types.REAL:
+            float f = get_FLOAT(column);
+            if (f > Byte.MAX_VALUE || f < Byte.MIN_VALUE)
+                throw new IllegalArgumentException("Value outside of byte range: " + f);
+            return (byte) f;
+        case Types.DOUBLE:
+            double d = get_DOUBLE(column);
+            if (d > Byte.MAX_VALUE || d < Byte.MIN_VALUE)
+                throw new IllegalArgumentException("Value outside of byte range: " + d);
+            return (byte) d;
+        case Types.DECIMAL:
+            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
+            long ld = getLongFromDECIMAL(column, "byte");
+            if (ld > Byte.MAX_VALUE || ld < Byte.MIN_VALUE)
+                throw new IllegalArgumentException("Value outside of byte range: " + ld);
+            return (byte) ld;
+        case Types.CHAR:
+            return CrossConverters.getByteFromString(getCHAR(column));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.getByteFromString(getVARCHAR(column));
+        default:
+            throw coercionError( "byte", column );
+        }
+    }
+
+    public final short getShort(int column) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return CrossConverters.getShortFromBoolean(get_BOOLEAN(column));
+        case Types.SMALLINT:
+            return get_SMALLINT(column);
+        case Types.INTEGER:
+            return CrossConverters.getShortFromInt(get_INTEGER(column));
+        case Types.BIGINT:
+            return CrossConverters.getShortFromLong(get_BIGINT(column));
+        case Types.REAL:
+            return CrossConverters.getShortFromFloat(get_FLOAT(column));
+        case Types.DOUBLE:
+            return CrossConverters.getShortFromDouble(get_DOUBLE(column));
+        case Types.DECIMAL:
+            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
+            return CrossConverters.getShortFromLong(
+                getLongFromDECIMAL(column, "short"));
+        case Types.CHAR:
+            return CrossConverters.getShortFromString(getCHAR(column));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.getShortFromString(getVARCHAR(column));
+        default:
+            throw coercionError( "short", column );
+        }
+    }
+
+    public final int getInt(int column) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return CrossConverters.getIntFromBoolean(get_BOOLEAN(column));
+        case Types.SMALLINT:
+            return (int) get_SMALLINT(column);
+        case Types.INTEGER:
+            return get_INTEGER(column);
+        case Types.BIGINT:
+            return CrossConverters.getIntFromLong(get_BIGINT(column));
+        case Types.REAL:
+            return CrossConverters.getIntFromFloat(get_FLOAT(column));
+        case Types.DOUBLE:
+            return CrossConverters.getIntFromDouble(get_DOUBLE(column));
+        case Types.DECIMAL:
+            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
+            return CrossConverters.getIntFromLong(
+                getLongFromDECIMAL(column, "int"));
+        case Types.CHAR:
+            return CrossConverters.getIntFromString(getCHAR(column));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.getIntFromString(getVARCHAR(column));
+        default:
+            throw coercionError(  "int", column );
+        }
+    }
+
+    public final long getLong(int column) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return CrossConverters.getLongFromBoolean(get_BOOLEAN(column));
+        case Types.SMALLINT:
+            return (long) get_SMALLINT(column);
+        case Types.INTEGER:
+            return (long) get_INTEGER(column);
+        case Types.BIGINT:
+            return get_BIGINT(column);
+        case Types.REAL:
+            return CrossConverters.getLongFromFloat(get_FLOAT(column));
+        case Types.DOUBLE:
+            return CrossConverters.getLongFromDouble(get_DOUBLE(column));
+        case Types.DECIMAL:
+            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
+            return getLongFromDECIMAL(column, "long");
+        case Types.CHAR:
+            return CrossConverters.getLongFromString(getCHAR(column));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.getLongFromString(getVARCHAR(column));
+        default:
+            throw coercionError( "long", column );
+        }
+    }
+
+    public final float getFloat(int column) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return CrossConverters.getFloatFromBoolean(get_BOOLEAN(column));
+        case Types.REAL:
+            return get_FLOAT(column);
+        case Types.DOUBLE:
+            return CrossConverters.getFloatFromDouble(get_DOUBLE(column));
+        case Types.DECIMAL:
+            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
+            return CrossConverters.getFloatFromDouble(getDoubleFromDECIMAL(column));
+        case Types.SMALLINT:
+            return (float) get_SMALLINT(column);
+        case Types.INTEGER:
+            return (float) get_INTEGER(column);
+        case Types.BIGINT:
+            return (float) get_BIGINT(column);
+        case Types.CHAR:
+            return CrossConverters.getFloatFromString(getCHAR(column));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.getFloatFromString(getVARCHAR(column));
+        default:
+            throw coercionError( "float", column );
+        }
+    }
+
+    public final double getDouble(int column) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return CrossConverters.getDoubleFromBoolean(get_BOOLEAN(column));
+        case Types.REAL:
+            double d = (double) get_FLOAT(column);
+            return d;
+            //return (double) get_FLOAT (column);
+        case Types.DOUBLE:
+            return get_DOUBLE(column);
+        case Types.DECIMAL:
+            // For performance we don't materialize the BigDecimal, but convert directly from decimal bytes to a long.
+            return getDoubleFromDECIMAL(column);
+        case Types.SMALLINT:
+            return (double) get_SMALLINT(column);
+        case Types.INTEGER:
+            return (double) get_INTEGER(column);
+        case Types.BIGINT:
+            return (double) get_BIGINT(column);
+        case Types.CHAR:
+            return CrossConverters.getDoubleFromString(getCHAR(column));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.getDoubleFromString(getVARCHAR(column));
+        default:
+            throw coercionError( "double", column );
+        }
+    }
+
+    public final BigDecimal getBigDecimal(int column) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.BOOLEAN:
+            return BigDecimal.valueOf(getLong(column));
+        case Types.DECIMAL:
+            return get_DECIMAL(column);
+        case Types.REAL:
+            // Can't use the following commented out line because it changes precision of the result.
+            //return new java.math.BigDecimal (get_FLOAT (column));
+            float f = get_FLOAT(column);
+            return new BigDecimal(String.valueOf(f));
+        case Types.DOUBLE:
+            return BigDecimal.valueOf(get_DOUBLE(column));
+        case Types.SMALLINT:
+            return BigDecimal.valueOf(get_SMALLINT(column));
+        case Types.INTEGER:
+            return BigDecimal.valueOf(get_INTEGER(column));
+        case Types.BIGINT:
+            return BigDecimal.valueOf(get_BIGINT(column));
+        case Types.CHAR:
+            return CrossConverters.getBigDecimalFromString(getCHAR(column));
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.getBigDecimalFromString(getVARCHAR(column));
+        default:
+            throw coercionError( "java.math.BigDecimal", column );
+        }
+    }
+
+    public final Date getDate(int column, Calendar cal) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.DATE:
 //            return getDATE(column, cal);
-//        case Types.TIMESTAMP:
+        case Types.TIMESTAMP:
 //            return getDateFromTIMESTAMP(column, cal);
-//        case Types.CHAR:
-//            return agent_.crossConverters_.
-//                    getDateFromString(getCHAR(column), cal);
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.
-//                    getDateFromString(getVARCHAR(column), cal);
-//        default:
-//            throw coercionError( "java.sql.Date", column );
-//        }
-//    }
-//
-//    final Time getTime(int column, Calendar cal) throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.TIME:
+            throw new UnsupportedOperationException();
+        case Types.CHAR:
+            return CrossConverters.
+                    getDateFromString(getCHAR(column), cal);
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.
+                    getDateFromString(getVARCHAR(column), cal);
+        default:
+            throw coercionError( "java.sql.Date", column );
+        }
+    }
+
+    public final Time getTime(int column, Calendar cal) throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.TIME:
 //            return getTIME(column, cal);
-//        case Types.TIMESTAMP:
+        case Types.TIMESTAMP:
 //            return getTimeFromTIMESTAMP(column, cal);
-//        case Types.CHAR:
-//            return agent_.crossConverters_.
-//                    getTimeFromString(getCHAR(column), cal);
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.
-//                    getTimeFromString(getVARCHAR(column), cal);
-//        default:
-//            throw coercionError( "java.sql.Time", column );
-//        }
-//    }
-//
-//    final Timestamp getTimestamp(int column, Calendar cal)
-//            throws SQLException {
-//        switch (jdbcTypes_[column - 1]) {
-//        case Types.TIMESTAMP:
+            throw new UnsupportedOperationException();
+        case Types.CHAR:
+            return CrossConverters.
+                    getTimeFromString(getCHAR(column), cal);
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.
+                    getTimeFromString(getVARCHAR(column), cal);
+        default:
+            throw coercionError( "java.sql.Time", column );
+        }
+    }
+
+    public final Timestamp getTimestamp(int column, Calendar cal)
+            throws SQLException {
+        switch (jdbcTypes_[column - 1]) {
+        case Types.TIMESTAMP:
 //            return getTIMESTAMP(column, cal);
-//        case Types.DATE:
+        case Types.DATE:
 //            return getTimestampFromDATE(column, cal);
-//        case Types.TIME:
+        case Types.TIME:
 //            return getTimestampFromTIME(column, cal);
-//        case Types.CHAR:
-//            return agent_.crossConverters_.
-//                    getTimestampFromString(getCHAR(column), cal);
-//        case Types.VARCHAR:
-//        case Types.LONGVARCHAR:
-//            return agent_.crossConverters_.
-//                    getTimestampFromString(getVARCHAR(column), cal);
-//        default:
-//            throw coercionError( "java.sql.Timestamp", column );
-//        }
-//    }
-//
+            throw new UnsupportedOperationException();
+        case Types.CHAR:
+            return CrossConverters.
+                    getTimestampFromString(getCHAR(column), cal);
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+            return CrossConverters.
+                    getTimestampFromString(getVARCHAR(column), cal);
+        default:
+            throw coercionError( "java.sql.Timestamp", column );
+        }
+    }
+
     public final String getString(int column) {
             String tempString;
             switch (jdbcTypes_[column - 1]) {
@@ -939,12 +947,12 @@ public class Cursor {
             case Types.TIMESTAMP:
 //                return getStringFromTIMESTAMP(column);
             case ClientTypes.BINARY:
-//                tempString = agent_.crossConverters_.getStringFromBytes(get_CHAR_FOR_BIT_DATA(column));
+//                tempString = CrossConverters.getStringFromBytes(get_CHAR_FOR_BIT_DATA(column));
 //                return (maxFieldSize_ == 0) ? tempString
 //                        : tempString.substring(0, Math.min(maxFieldSize_, tempString.length()));
             case Types.VARBINARY:
             case Types.LONGVARBINARY:
-//                tempString = agent_.crossConverters_.getStringFromBytes(get_VARCHAR_FOR_BIT_DATA(column));
+//                tempString = CrossConverters.getStringFromBytes(get_VARCHAR_FOR_BIT_DATA(column));
 //                return (maxFieldSize_ == 0) ? tempString
 //                        : tempString.substring(0, Math.min(maxFieldSize_, tempString.length()));
             case Types.JAVA_OBJECT:
@@ -956,7 +964,7 @@ public class Cursor {
 //                }
             case Types.BLOB:
 //                ClientBlob b = getBlobColumn_(column, agent_, false);
-//                tempString = agent_.crossConverters_.getStringFromBytes(b.getBytes(1, (int) b.length()));
+//                tempString = CrossConverters.getStringFromBytes(b.getBytes(1, (int) b.length()));
 //                return tempString;
             case Types.CLOB:
 //                ClientClob c = getClobColumn_(column, agent_, false);
@@ -968,7 +976,7 @@ public class Cursor {
             }
     }
 
-    final byte[] getBytes(int column) {
+    public final byte[] getBytes(int column) {
             switch (jdbcTypes_[column - 1]) {
             case Types.BINARY:
                 return get_CHAR_FOR_BIT_DATA(column);
@@ -1077,7 +1085,7 @@ public class Cursor {
             }
     }
 
-    final Blob getBlob(int column) {
+    public final Blob getBlob(int column) {
         throw new UnsupportedOperationException();
 //        switch (jdbcTypes_[column - 1]) {
 //        case ClientTypes.BLOB:
@@ -1087,7 +1095,7 @@ public class Cursor {
 //        }
     }
 
-    final Clob getClob(int column) {
+    public final Clob getClob(int column) {
         throw new UnsupportedOperationException();
 //        switch (jdbcTypes_[column - 1]) {
 //        case ClientTypes.CLOB:
@@ -1108,7 +1116,7 @@ public class Cursor {
 //            new ClientMessageId (SQLState.NOT_IMPLEMENTED), "getRef(int)");
 //    }
 
-    final Object getObject(int column) throws SQLException {
+    public final Object getObject(int column) {
         switch (jdbcTypes_[column - 1]) {
         case Types.BOOLEAN:
             return get_BOOLEAN(column);
@@ -1123,8 +1131,8 @@ public class Cursor {
             return get_FLOAT(column);
         case Types.DOUBLE:
             return get_DOUBLE(column);
-//        case Types.DECIMAL:
-//            return get_DECIMAL(column);
+        case Types.DECIMAL:
+            return get_DECIMAL(column);
 //        case Types.DATE:
 //            return getDATE(column, getRecyclableCalendar());
 //        case Types.TIME:
@@ -1148,7 +1156,7 @@ public class Cursor {
 //        case Types.CLOB:
 //            return getClobColumn_(column, agent_, true);
         default:
-            throw coercionError( "Object", column );
+            throw coercionError("Object", column );
         }
     }
 

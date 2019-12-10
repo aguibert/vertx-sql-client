@@ -1,11 +1,10 @@
 package io.vertx.db2client.impl.drda;
 
 import java.sql.ResultSet;
-import java.util.Arrays;
 
 import io.netty.buffer.ByteBuf;
 
-public class DRDAQueryRequest extends DRDARequest {
+public class DRDAQueryRequest extends DRDAConnectRequest {
     
     private static final String COLLECTIONNAME = "NULLID";
     
@@ -13,6 +12,16 @@ public class DRDAQueryRequest extends DRDARequest {
     
     public DRDAQueryRequest(ByteBuf buffer, CCSIDManager ccsidManager) {
         super(buffer, ccsidManager);
+    }
+    
+    /**
+     * @return True if the SQL is a query (i.e. SELECT) and false otherwise
+     */
+    public static boolean isQuery(String sql) {
+        return sql.startsWith("SELECT") 
+                || sql.startsWith("select")
+                || sql.startsWith("WITH")
+                || sql.startsWith("with");
     }
     
     // Write the message to preform a prepare into.
@@ -56,8 +65,57 @@ public class DRDAQueryRequest extends DRDARequest {
         // may be able to merge this with firstContinueQuery_ and push above conditional to common
         // @AGG don't think we need this
 //        ((NetStatement) materialStatement).qryrowsetSentOnOpnqry_ = sendQryrowset; // net-specific event
-        // @AGG added this
-        finalizeDssLength();
+    }
+    
+    // Write the message to perform an execute immediate.
+    // The SQL statement sent as command data cannot contain references
+    // to either input variables or output variables.
+    //
+    // preconditions:
+    public void writeExecuteImmediate(String sql, Section section, String dbName) {
+        buildEXCSQLIMM(section,
+                dbName,
+                false, //sendQryinsid
+                0);                        //qryinsid
+        buildSQLSTTcommandData(sql); // statement follows in sqlstt command data object
+    }
+    
+    // Build the Execute Immediate SQL Statement Command to
+    // execute a non-cursor SQL statement sent as command data.
+    //
+    // precondtions:
+    private void buildEXCSQLIMM(Section section, String dbName, boolean sendQryinsid, long qryinsid) {
+        createCommand();
+        markLengthBytes(CodePoint.EXCSQLIMM);
+
+        buildPKGNAMCSN(dbName, section);
+        buildRDBCMTOK();
+        if (sendQryinsid) {
+            buildQRYINSID(qryinsid);
+        }
+
+        updateLengthBytes();
+    }
+    
+    // RDB Commit Allowed specifies whether an RDB should allow the processing of any
+    // commit or rollback operations that occure during execution of a statement.
+    // True allow the processing of commits and rollbacks
+    private void buildRDBCMTOK() {
+        writeScalar1Byte(CodePoint.RDBCMTOK, CodePoint.TRUE);
+    }
+    
+    public void buildCLSQRY(Section section, String dbName, long queryInstanceIdentifier) {
+        createCommand();
+        markLengthBytes(CodePoint.CLSQRY);
+        buildPKGNAMCSN(dbName, section);
+        buildQRYINSID(queryInstanceIdentifier);
+        updateLengthBytes();
+    }
+    
+    void buildQRYINSID(long qryinsid) {
+        markLengthBytes(CodePoint.QRYINSID);
+        buffer.writeLong(qryinsid);
+        updateLengthBytes();
     }
     
     //----------------------helper methods----------------------------------------
@@ -262,11 +320,9 @@ public class DRDAQueryRequest extends DRDARequest {
 
         buildPKGNAMCSN(dbName, section);
         if (sendRtnsqlda) {
-            System.out.println("@AGG send rtn sql data");
             buildRTNSQLDA();
         }
         if (sendTypsqlda) {
-            System.out.println("@AGG send typsqlda");
             buildTYPSQLDA(typsqlda);
         }
 

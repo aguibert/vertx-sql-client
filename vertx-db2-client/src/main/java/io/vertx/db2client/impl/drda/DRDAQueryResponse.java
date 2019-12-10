@@ -2,7 +2,7 @@ package io.vertx.db2client.impl.drda;
 
 import io.netty.buffer.ByteBuf;
 
-public class DRDAQueryResponse extends DRDAResponse {
+public class DRDAQueryResponse extends DRDAConnectResponse {
     
 //    protected boolean ensuredLengthForDecryption_ = false; // A layer lengths have already been ensured in decrypt method.
 //    protected byte[] longBufferForDecryption_ = null;
@@ -72,7 +72,9 @@ public class DRDAQueryResponse extends DRDAResponse {
                     // underlying server's prepared statement has been recompiled
                     // since the client first received metadata when preparing the
                     // statement.
-                    //statementI.completePrepareDescribeOutput(columnMetaData, netSqlca); @AGG removed, only checks SQLCA code for error
+                    if (netSqlca != null) {
+                        NetSqlca.complete(netSqlca);
+                    }
                     peekCP = parseTypdefsOrMgrlvlovrs();
                 }
                 // check if the DARD is mutually exclusive with CARD, if so, then the following if should be an elese
@@ -86,8 +88,40 @@ public class DRDAQueryResponse extends DRDAResponse {
         }
     }
     
-    public boolean hasMoreRows() {
-        return peekCodePoint() == CodePoint.QRYDTA;
+    public void readCursorClose() {
+        startSameIdChainParse();
+        parseCLSQRYreply();
+        endOfSameIdChainData();
+    }
+    
+    public long readExecuteImmediate() {
+        startSameIdChainParse();
+        long updateCount = parseEXCSQLIMMreply();
+        endOfSameIdChainData();
+        return updateCount;
+    }
+    
+    // Parse the reply for the Close Query Command.
+    // This method handles the parsing of all command replies and reply data
+    // for the clsqry command.
+    private void parseCLSQRYreply() {
+        int peekCP = parseTypdefsOrMgrlvlovrs();
+
+        if (peekCP == CodePoint.SQLCARD) {
+            NetSqlca netSqlca = parseSQLCARD(null);  //@f48553sxg - null means rowsetSqlca_ is null
+            // Set the cursor state if null SQLCA or sqlcode is equal to 0.
+            if (netSqlca != null) {
+                int sqlcode = netSqlca.getSqlCode();
+                if (sqlcode == 100 || sqlcode == 20237)
+                    cursor.setAllRowsReceivedFromServer(true);
+                else
+                    NetSqlca.complete(netSqlca);
+                
+            }
+        } else {
+            throw new IllegalStateException("Close Query error");
+//            parseCloseError(resultSet);
+        }
     }
     
     /**
@@ -103,11 +137,16 @@ public class DRDAQueryResponse extends DRDAResponse {
         return false;
     }
     
+    public boolean isQueryComplete() {
+        int peekCP = peekCodePoint();
+        return peekCP == CodePoint.SQLCARD || peekCP == CodePoint.ENDQRYRM;
+    }
+    
     public void readEndOpenQuery() {
         int peekCP = peekCodePoint();
         if (peekCP == CodePoint.SQLCARD) {
             NetSqlca netSqlca = parseSQLCARD(null);
-            // @AGG removing for now, just checks for errors statementI.completeSqlca(netSqlca);
+            NetSqlca.complete(netSqlca);
             peekCP = peekCodePoint();
         }
         
@@ -115,10 +154,84 @@ public class DRDAQueryResponse extends DRDAResponse {
             parseEndQuery(/*netResultSet*/);
         }
 
-        //statementI.completeOpenQuery(sqlca, netResultSet);
         completeOpenQuery(sqlca);
         
         endOfSameIdChainData();
+    }
+    
+    // Parse the reply for the Execute Immediate SQL Statement Command.
+    // This method handles the parsing of all command replies and reply data
+    // for the excsqlimm command.
+    private long parseEXCSQLIMMreply() {
+        int peekCP = parseTypdefsOrMgrlvlovrs();
+
+        if (peekCP == CodePoint.RDBUPDRM) {
+            parseRDBUPDRM();
+            peekCP = parseTypdefsOrMgrlvlovrs();
+        }
+
+        long updateCount = 0;
+        switch (peekCP) {
+            case CodePoint.ENDUOWRM:
+                parseENDUOWRM();
+                parseTypdefsOrMgrlvlovrs();
+            case CodePoint.SQLCARD:
+                NetSqlca netSqlca = parseSQLCARD(null);
+                if (netSqlca != null) {
+                    NetSqlca.complete(netSqlca);
+                    if (netSqlca.getSqlCode() >= 0) {
+                        updateCount = netSqlca.getUpdateCount();
+                        System.out.println("@AGG got update count: " + updateCount);
+                    }
+                }
+                break;
+            default:
+                parseExecuteImmediateError();
+                break;
+        }
+
+        peekCP = peekCodePoint();
+        if (peekCP == CodePoint.PBSD) {
+            parsePBSD();
+        }
+        return updateCount;
+    }
+    
+    private void parseExecuteImmediateError() {
+        int peekCP = peekCodePoint();
+        switch (peekCP) {
+        case CodePoint.ABNUOWRM:
+            {
+                throw new IllegalStateException("Abnormal ending to UOW");
+//                //passing the StatementCallbackInterface implementation will
+//                //help in retrieving the the UnitOfWorkListener that needs to
+//                //be rolled back
+//                NetSqlca sqlca = parseAbnormalEndUow();
+//                statement.completeSqlca(sqlca);
+//                break;
+            }
+        case CodePoint.CMDCHKRM:
+            parseCMDCHKRM();
+            break;
+        case CodePoint.DTAMCHRM:
+            parseDTAMCHRM();
+            break;
+        case CodePoint.OBJNSPRM:
+            parseOBJNSPRM();
+            break;
+        case CodePoint.RDBNACRM:
+            parseRDBNACRM();
+            break;
+        case CodePoint.SQLERRRM:
+            {
+                NetSqlca sqlca = parseSqlErrorCondition();
+                NetSqlca.complete(sqlca);
+                break;
+            }
+        default:
+            throwUnknownCodepoint(peekCP);
+            break;
+        }
     }
     
     /**
@@ -269,7 +382,7 @@ public class DRDAQueryResponse extends DRDAResponse {
                 // underlying server's prepared statement has been recompiled
                 // since the client first received metadata when preparing the
                 // statement.
-                //statementI.completePrepareDescribeOutput(columnMetaData, netSqlca); @AGG removed, only checks SQLCA code for error
+                NetSqlca.complete(netSqlca);
                 peekCP = parseTypdefsOrMgrlvlovrs();
             }
             // check if the DARD is mutually exclusive with CARD, if so, then the following if should be an elese
@@ -289,7 +402,7 @@ public class DRDAQueryResponse extends DRDAResponse {
 
         if (peekCP == CodePoint.SQLCARD) {
             NetSqlca netSqlca = parseSQLCARD(null);
-            // @AGG removing for now, just checks for errors statementI.completeSqlca(netSqlca);
+            NetSqlca.complete(netSqlca);
             peekCP = peekCodePoint();
         }
 
@@ -297,12 +410,11 @@ public class DRDAQueryResponse extends DRDAResponse {
             parseEndQuery(/*netResultSet*/);
         }
 
-        //statementI.completeOpenQuery(sqlca, netResultSet);
         completeOpenQuery(sqlca);
     }
     
     public void completeOpenQuery(NetSqlca sqlca/*, ClientResultSet resultSet*/) {
-        completeSqlca(sqlca);
+        NetSqlca.complete(sqlca);
 //        resultSet_ = resultSet;
 //        // For NET, resultSet_ == null when open query fails and receives OPNQFLRM.
 //        // Then, in NetStatementReply.parseOpenQueryFailure(), completeOpenQuery() is
@@ -346,7 +458,7 @@ public class DRDAQueryResponse extends DRDAResponse {
         parseENDQRYRM(/*resultSetI*/);
         parseTypdefsOrMgrlvlovrs();
         NetSqlca netSqlca = parseSQLCARD(null);
-        // resultSetI.earlyCloseComplete(netSqlca); @AGG removed for now. Indicates to the client that the server finished sending all rows
+        cursor.setAllRowsReceivedFromServer(true);
     }
     
     // Also called by NetResultSetReply subclass.
@@ -1111,12 +1223,12 @@ public class DRDAQueryResponse extends DRDAResponse {
             }
 
             // @AGG not implemented, checks for error codes on the sqlca
+            NetSqlca.complete(netSqlca);
 //            statement.completePrepareDescribeOutput(columnMetaData,
 //                    netSqlca);
         } else if (peekCP == CodePoint.SQLCARD) {
             NetSqlca netSqlca = parseSQLCARD(null);
-            // @AGG not needed
-            //statement.completePrepare(netSqlca);
+            NetSqlca.complete(netSqlca);
         } else {
             //throw new IllegalStateException("Unable to prepare statement");
             parsePrepareError();
@@ -1150,7 +1262,7 @@ public class DRDAQueryResponse extends DRDAResponse {
             break;
         case CodePoint.SQLERRRM: {
             NetSqlca sqlca = parseSqlErrorCondition();
-            completeSqlca(sqlca);
+            NetSqlca.complete(sqlca);
             break;
         }
         default:
@@ -1531,7 +1643,7 @@ public class DRDAQueryResponse extends DRDAResponse {
 
         //netAgent_.setSvrcod(svrcod); @AGG not setting svrcod, doesn't seem to be needed
         NetSqlca netSqlca = parseSQLCARD(null); 
-        completeSqlca(netSqlca);
+        NetSqlca.complete(netSqlca);
 
 //        agent_.accumulateChainBreakingReadExceptionAndThrow(
 //            new DisconnectException(
@@ -1709,11 +1821,10 @@ public class DRDAQueryResponse extends DRDAResponse {
             return netSqlca;
         } else {
             netSqlca = parseSQLCARDrow(null);
-        } // @AGG at 0x59 here
+        }
 
         parseSQLDHROW(columnMetaData);
         
-        // @AGG SHOULD BE AT 114/0x72 (EBCDIC) here
         buffer.skipBytes(6); // @AGG manually added 6 byte skip
         
         int numColumns = parseSQLNUMROW();
@@ -2102,7 +2213,6 @@ public class DRDAQueryResponse extends DRDAResponse {
     }
     
     private int skipSQLDHROW(int offset) {
-        System.out.println("@AGG initial reader index is: " + buffer.readerIndex());
         buffer.markReaderIndex();
         buffer.readerIndex(offset);
         //int sqldhrowgrpNullInd = buffer_[pos_ + offset++] & 0xff;
@@ -2131,7 +2241,6 @@ public class DRDAQueryResponse extends DRDAResponse {
         offset += stringLength;
 
         buffer.resetReaderIndex();
-        System.out.println("@AGG final reader index is: " + buffer.readerIndex());
 
         return offset;
     }

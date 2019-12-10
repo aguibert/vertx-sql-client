@@ -61,6 +61,93 @@ public abstract class DRDAResponse {
         }
     }
     
+    // The End Unit of Work Condition (ENDUOWRM) Reply Mesage specifies
+    // that the unit of work has ended as a result of the last command.
+    //
+    // Returned from Server:
+    //   SVRCOD - required  (4 WARNING)
+    //   UOWDSP - required
+    //   RDBNAM - optional
+    void parseENDUOWRM() {
+        boolean svrcodReceived = false;
+        int svrcod = CodePoint.SVRCOD_INFO;
+        boolean uowdspReceived = false;
+        int uowdsp = 0;
+        boolean rdbnamReceived = false;
+        String rdbnam = null;
+
+        parseLengthAndMatchCodePoint(CodePoint.ENDUOWRM);
+        pushLengthOnCollectionStack();
+        int peekCP = peekCodePoint();
+
+        while (peekCP != END_OF_COLLECTION) {
+
+            boolean foundInPass = false;
+
+            if (peekCP == CodePoint.SVRCOD) {
+                foundInPass = true;
+                svrcodReceived = checkAndGetReceivedFlag(svrcodReceived);
+                svrcod = parseSVRCOD(CodePoint.SVRCOD_WARNING, CodePoint.SVRCOD_WARNING);
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.UOWDSP) {
+                foundInPass = true;
+                uowdspReceived = checkAndGetReceivedFlag(uowdspReceived);
+                uowdsp = parseUOWDSP();
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.RDBNAM) {
+                foundInPass = true;
+                rdbnamReceived = checkAndGetReceivedFlag(rdbnamReceived);
+                rdbnam = parseRDBNAM(true);
+                peekCP = peekCodePoint();
+            }
+
+
+            if (!foundInPass) {
+                throwUnknownCodepoint(peekCP);
+            }
+        }
+        popCollectionStack();
+        if (!svrcodReceived)
+            throwMissingRequiredCodepoint("SVRCOD", CodePoint.SVRCOD);
+        if (!uowdspReceived)
+            throwMissingRequiredCodepoint("UOWDSP", CodePoint.UOWDSP);
+
+//        netAgent_.setSvrcod(svrcod);
+//        if (uowdsp == CodePoint.UOWDSP_COMMIT) {
+//            connection.completeLocalCommit();
+//        } else {
+//            connection.completeLocalRollback();
+//        }
+        if (uowdsp == CodePoint.UOWDSP_COMMIT)
+            System.out.println("@AGG commit completed normally");
+    }
+    
+    // Relational Database Name specifies the name of a relational
+    // database of the server.  A server can have more than one RDB.
+    String parseRDBNAM(boolean skip) {
+        parseLengthAndMatchCodePoint(CodePoint.RDBNAM);
+        if (skip) {
+            skipBytes();
+            return null;
+        }
+        return readString();
+    }
+    
+    // Unit of Work Disposition Scalar Object specifies the disposition of the
+    // last unit of work.
+    private int parseUOWDSP() {
+        parseLengthAndMatchCodePoint(CodePoint.UOWDSP);
+        int uowdsp = readUnsignedByte();
+        if ((uowdsp != CodePoint.UOWDSP_COMMIT) && (uowdsp != CodePoint.UOWDSP_ROLLBACK)) {
+            doValnsprmSemantics(CodePoint.UOWDSP, uowdsp);
+        }
+        return uowdsp;
+    }
+    
     NetSqlca parseSQLCARD(NetSqlca[] rowsetSqlca) {
         parseLengthAndMatchCodePoint(CodePoint.SQLCARD);
         int ddmLength = getDdmLength();
@@ -331,18 +418,6 @@ public abstract class DRDAResponse {
 
         parseSQLDCXGRP(); // SQLDCXGRP
         return sqldcRown;
-    }
-    
-    // @AGG this was originally on the connection class
-    void completeSqlca(NetSqlca sqlca) {
-        if (sqlca == null) {
-        } else if (sqlca.getSqlCode() > 0) {
-            System.out.println("[WARNING] Got SQLCode " + sqlca.getSqlCode());
-//            accumulateWarning(new SqlWarning(agent_.logWriter_, sqlca));
-        } else if (sqlca.getSqlCode() < 0) {
-            throw new IllegalStateException("Got sqlcode " + sqlca.getSqlCode());
-//            agent_.accumulateReadException(new SqlException(agent_.logWriter_, sqlca));
-        }
     }
     
     // Severity Code is an indicator of the severity of a condition
@@ -624,7 +699,6 @@ public abstract class DRDAResponse {
             ccsidManager.setCCSID(CCSIDManager.UTF8); // @AGG forcing CCSID to UTF8
             String rdbname = parseFastVCS();
             ccsidManager.setCCSID(CCSIDManager.EBCDIC);
-            System.out.println("@AGG got rdb len=" + rdbname.length() + " str=" + rdbname);
         }
 
 
