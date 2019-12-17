@@ -43,7 +43,11 @@ public class ColumnMetaData {
     public String[] sqlxSchema_;    // schema name
     public String[] sqlxRdbnam_;    // catalog name
     
+    // For performance only, not part of logical model.
+    public transient int[][] protocolTypesCache_ = null;
+    
     public transient int[] types_;
+    public transient int[] clientParamtertype_;
 
     public void setColumnCount(final int numColumns) {
         if (this.nullable_ != null) {
@@ -77,5 +81,6 @@ public class ColumnMetaData {
         this.sqlxSchema_ = new String[numColumns];
         this.sqlxRdbnam_ = new String[numColumns];
         this.types_ = new int[numColumns];
+        this.clientParamtertype_ = new int[numColumns];
     }
 }

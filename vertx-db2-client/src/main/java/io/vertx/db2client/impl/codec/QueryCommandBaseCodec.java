@@ -43,7 +43,7 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
     protected ColumnMetaData columnDefinitions;
     protected RowResultDecoder<?, T> decoder;
     private int currentColumn;
-    private CCSIDManager ccsidManager = new CCSIDManager();
+    CCSIDManager ccsidManager = new CCSIDManager();
 
     QueryCommandBaseCodec(C cmd) {
         super(cmd);

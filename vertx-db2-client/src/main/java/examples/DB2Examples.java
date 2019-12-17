@@ -2,18 +2,17 @@ package examples;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.util.concurrent.CompletableFuture;
 
 import io.vertx.core.AsyncResult;
-import io.vertx.core.Vertx;
-import io.vertx.core.VertxOptions;
 import io.vertx.db2client.DB2ConnectOptions;
 import io.vertx.db2client.DB2Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
+import io.vertx.sqlclient.Tuple;
 
 /**
  * To Run DB2 in a docker container thaty is compatible with this sample, run
@@ -40,27 +39,34 @@ public class DB2Examples {
 
     public static void runJDBC() throws Exception {
         try (Connection con = DriverManager.getConnection("jdbc:db2://localhost:50000/quark_db", "quark", "quark")) {
-            // con.createStatement().execute("CREATE TABLE users ( id varchar(50) )");
-            // con.createStatement().execute("INSERT INTO users VALUES ('andy')");
-            // con.createStatement().execute("INSERT INTO users VALUES ('julien')");
-            // con.createStatement().execute("INSERT INTO users VALUES ('bob')");
-            // con.createStatement().execute("INSERT INTO users VALUES ('chuck')");
-            Statement stmt = con.createStatement();
+             con.createStatement().execute("CREATE TABLE users ( id varchar(50) )");
+             con.createStatement().execute("INSERT INTO users VALUES ('andy')");
+             con.createStatement().execute("INSERT INTO users VALUES ('julien')");
+             con.createStatement().execute("INSERT INTO users VALUES ('bob')");
+             con.createStatement().execute("INSERT INTO users VALUES ('chuck')");
+//            Statement stmt = con.createStatement();
+            PreparedStatement ps = con.prepareStatement("SELECT * FROM users WHERE id=?");
+            ps.setString(1, "andy");
+            ResultSet rs = ps.executeQuery();
             // ResultSet rs = stmt.executeQuery("SELECT * FROM users WHERE id='andy'");
-            ResultSet rs = stmt.executeQuery("SELECT * FROM users");
+//            ResultSet rs = stmt.executeQuery("SELECT * FROM users");
             while (rs.next())
                 System.out.println("Got JDBC result: " + rs.getString(1));
         }
     }
 
     public static void main(String args[]) throws Exception {
-        // runJDBC();
-        // if (true)
-        // return;
+//         runJDBC();
+//         if (true)
+//         return;
 
         // Connect options
-        DB2ConnectOptions connectOptions = new DB2ConnectOptions().setPort(50000).setHost("localhost")
-                .setDatabase("quark_db").setUser("quark").setPassword("quark");
+        DB2ConnectOptions connectOptions = new DB2ConnectOptions()//
+                .setPort(50000)//
+                .setHost("localhost")//
+                .setDatabase("quark_db")//
+                .setUser("quark")//
+                .setPassword("quark");
 
         // Pool options
         PoolOptions poolOptions = new PoolOptions().setMaxSize(5);
@@ -70,28 +76,37 @@ public class DB2Examples {
 
         System.out.println("Created pool");
 
-        client.query("CREATE TABLE IF NOT EXISTS users ( id varchar(50) )", ar -> {
-            if (ar.succeeded()) {
-                System.out.println("Created table");
-            } else {
-                System.out.println("Create failed: " + ar.cause());
-            }
-        });
-
-        client.query("INSERT INTO users VALUES ('andy5')", ar -> {
-            System.out.println("INSERT results");
+//        client.query("CREATE TABLE IF NOT EXISTS users ( id varchar(50) )", ar -> {
+//            if (ar.succeeded()) {
+//                System.out.println("Created table");
+//            } else {
+//                System.out.println("Create failed: " + ar.cause());
+//            }
+//        });
+//
+//        client.query("INSERT INTO users VALUES ('andy5')", ar -> {
+//            System.out.println("INSERT results");
+//            dumpResults(ar);
+//        });
+//        
+//        client.query("SELECT * FROM users", ar2 -> {
+//            System.out.println("SELECT results");
+//            dumpResults(ar2);
+//        });
+//        client.query("SELECT * FROM users WHERE id='andy'", ar2 -> {
+//            System.out.println("SELECT results");
+//            dumpResults(ar2);
+//        });
+//        
+//        client.query("DELETE FROM users WHERE id='andy5'", ar3 -> {
+//            System.out.println("DELETE results");
+//            dumpResults(ar3);
+//        });
+        
+        client.preparedQuery("SELECT * FROM users WHERE id=?", Tuple.of("andy"), ar -> {
+            System.out.println("@AGG inside PS lambda");
             dumpResults(ar);
-        });
-        
-        client.query("SELECT * FROM users", ar2 -> {
-            System.out.println("SELECT results");
-            dumpResults(ar2);
-        });
-        
-        client.query("DELETE FROM users WHERE id='andy5'", ar3 -> {
-            System.out.println("DELETE results");
-            dumpResults(ar3);
-        });
+          });
         
         waitFor(750);
         client.close();

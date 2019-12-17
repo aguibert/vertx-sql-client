@@ -26,7 +26,6 @@ public class Section {
     Section(String name, int sectionNumber, String cursorName, int resultSetHoldability) {
         // default for all sections except for generated section , isGenerated is set to false
         init(name, sectionNumber, cursorName, resultSetHoldability, false);
-        System.out.println("@AGG create section: " + this);
     }
 
     public Section(String name, int sectionNumber, String cursorName, int resultSetHoldability, boolean isGenerated) {

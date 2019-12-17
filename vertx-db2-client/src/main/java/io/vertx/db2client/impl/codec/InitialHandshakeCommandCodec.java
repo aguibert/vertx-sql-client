@@ -56,7 +56,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
     private static final int ST_AUTHENTICATING = 1;
     private static final int ST_CONNECTED = 2;
     
-    private static final int TARGET_SECURITY_MEASURE = 0x03;//0x0A;
+    private static final int TARGET_SECURITY_MEASURE = DRDAConstants.SECMEC_USRIDPWD;//0x03;//0x0A;
     
     // TODO: May need to move this to a higher scope?
     private final CCSIDManager ccsidManager = new CCSIDManager();

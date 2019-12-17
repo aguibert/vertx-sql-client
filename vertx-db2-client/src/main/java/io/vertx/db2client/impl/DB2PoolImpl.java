@@ -33,7 +33,7 @@ public class DB2PoolImpl extends PoolBase<DB2PoolImpl> implements DB2Pool {
       System.out.println("@AGG query");
         return super.query(sql, handler);
     }
-
+  
   @Override
   public void connect(Handler<AsyncResult<Connection>> completionHandler) {
       System.out.println("@AGG connect");

@@ -1,5 +1,9 @@
 package io.vertx.db2client.impl.drda;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
 import io.netty.buffer.ByteBuf;
 
 public class DRDAQueryResponse extends DRDAConnectResponse {
@@ -26,6 +30,89 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
         startSameIdChainParse();
         parsePRPSQLSTTreply(); // @AGG removed callback statement);
         endOfSameIdChainData();
+    }
+    
+    public void readPrepareDescribeInputOutput() {
+        readPrepareDescribeOutput();
+        readDescribeInput();
+        completePrepareDescribe();
+    }
+    
+    private void completePrepareDescribe() {
+        if (columnMetaData == null) {
+            return;
+        }
+        // TODO: @AGG move this stuff to non-DRDA class
+//        parameters_ = expandObjectArray(parameters_, parameterMetaData_.columns_);
+//        parameterSet_ = expandBooleanArray(parameterSet_, parameterMetaData_.columns_);
+//        parameterRegistered_ = expandBooleanArray(parameterRegistered_, parameterMetaData_.columns_);
+    }
+    
+
+    public void readDescribeInput(/*PreparedStatementCallbackInterface preparedStatement*/) {
+        // @AGG no encryption
+//        if (longBufferForDecryption_ != null) {
+//            buffer_ = longBufferForDecryption_;
+//            pos_ = longPosForDecryption_;
+//            count_ = longCountForDecryption_;
+//            if (longBufferForDecryption_ != null && count_ > longBufferForDecryption_.length) {
+//                count_ = longBufferForDecryption_.length;
+//            }
+//            dssLength_ = 0;
+//            longBufferForDecryption_ = null;
+//        }
+
+        startSameIdChainParse();
+        parseDSCSQLSTTreply(/*preparedStatement, */1); // anything other than 0 for input
+        endOfSameIdChainData();
+    }
+    
+    // Parse the reply for the Describe SQL Statement Command.
+    // This method handles the parsing of all command replies and reply data
+    // for the dscsqlstt command.
+    private void parseDSCSQLSTTreply(int metaDataType) {// 0 is output, else input
+        int peekCP = parseTypdefsOrMgrlvlovrs();
+
+        if (peekCP == CodePoint.SQLDARD) {
+            ColumnMetaData columnMetaData = null;
+
+            if (columnMetaData == null) {
+                //columnMetaData = ClientDriver.getFactory().newColumnMetaData(netAgent_.logWriter_);
+                columnMetaData = new ColumnMetaData();
+            }
+
+            NetSqlca netSqlca = parseSQLDARD(columnMetaData, false);  // false means do not skip SQLDARD bytes
+            if (columnMetaData.columns_ == 0) {
+                columnMetaData = null;
+            }
+
+            if (metaDataType == 0) // DESCRIBE OUTPUT
+            {
+                NetSqlca.complete(netSqlca);
+                this.columnMetaData = columnMetaData;
+//                ps.completeDescribeOutput(columnMetaData, netSqlca);
+            } else {
+                NetSqlca.complete(netSqlca);
+                this.columnMetaData = columnMetaData;
+                //ps.completeDescribeInput(columnMetaData, netSqlca);
+            }
+        } else if (peekCP == CodePoint.SQLCARD) {
+            NetSqlca netSqlca = parseSQLCARD(null);
+            if (metaDataType == 0) // DESCRIBE OUTPUT
+            {
+                NetSqlca.complete(netSqlca);
+                this.columnMetaData = null;
+                //ps.completeDescribeOutput(null, netSqlca);
+            } else {
+                NetSqlca.complete(netSqlca);
+                this.columnMetaData = null;
+                //ps.completeDescribeInput(null, netSqlca);
+            }
+        } else {
+            throw new IllegalStateException("Parse describe error");
+            //parseDescribeError(ps);
+        }
+
     }
     
     @Deprecated // @AGG reads all data sync
@@ -99,6 +186,596 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
         long updateCount = parseEXCSQLIMMreply();
         endOfSameIdChainData();
         return updateCount;
+    }
+    
+    public void readExecute(/*PreparedStatementCallbackInterface preparedStatement*/) {
+        startSameIdChainParse();
+        parseEXCSQLSTTreply();//preparedStatement);
+        endOfSameIdChainData();
+    }
+    
+    // Parse the reply for the Execute SQL Statement Command.
+    // This method handles the parsing of all command replies and reply data
+    // for the excsqlstt command.
+    // Also called by ClientCallableStatement.readExecuteCall()
+    private void parseEXCSQLSTTreply(/*StatementCallbackInterface statementI*/) {
+        // first handle the transaction component, which consists of one or more
+        // reply messages indicating the transaction state.
+        // These are ENDUOWRM, CMMRQSRM, or RDBUPDRM.  If RDBUPDRM is returned,
+        // it may be followed by ENDUOWRM or CMMRQSRM
+        int peekCP = peekCodePoint();
+        if (peekCP == CodePoint.RDBUPDRM) {
+            parseRDBUPDRM();
+            peekCP = peekCodePoint();
+        }
+
+        if (peekCP == CodePoint.ENDUOWRM) {
+            parseENDUOWRM();//statementI.getConnectionCallbackInterface());
+            peekCP = peekCodePoint();
+        }
+
+        // Check for a RSLSETRM, this is first rm of the result set summary component
+        // which would be returned if a stored procedure was called which returned result sets.
+        if (peekCP == CodePoint.RSLSETRM) {
+            parseResultSetProcedure();
+            peekCP = peekCodePoint();
+            if (peekCP == CodePoint.RDBUPDRM) {
+                parseRDBUPDRM();
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.PBSD) {
+                parsePBSD();
+            }
+            return;
+        }
+
+        // check for a possible TYPDEFNAM or TYPDEFOVR which may be present
+        // before the SQLCARD or SQLDTARD.
+        peekCP = parseTypdefsOrMgrlvlovrs();
+
+        // an SQLCARD may be retunred if there was no output data, result sets or parameters,
+        // or in the case of an error.
+        if (peekCP == CodePoint.SQLCARD) {
+            NetSqlca netSqlca = parseSQLCARD(null);
+
+            //statementI.completeExecute(netSqlca);
+            NetSqlca.complete(netSqlca);
+            long updateCount = netSqlca.getUpdateCount(); // @AGG may want to return this?
+            peekCP = peekCodePoint();
+        } else if (peekCP == CodePoint.SQLDTARD) {
+            throw new UnsupportedOperationException("stored procedure");
+//            // in the case of singleton select or if a stored procedure was called which had
+//            // parameters but no result sets, an SQLSTARD may be returned
+//            // keep the PreparedStatementCallbackInterface, since only preparedstatement and callablestatement
+//            // has parameters or singleton select which translates to sqldtard.
+//            NetSqldta netSqldta = null;
+//            boolean useCachedSingletonRowData = false;
+//            if (((ClientStatement)statementI).cachedSingletonRowData_ == null) {
+//                netSqldta = new NetSqldta(netAgent_);
+//            } else {
+//                netSqldta = (NetSqldta)((ClientStatement) statementI).
+//                    cachedSingletonRowData_;
+//                netSqldta.resetDataBuffer();
+//                netSqldta.extdtaData_.clear();
+//                useCachedSingletonRowData = true;
+//            }
+//            NetSqlca netSqlca =
+//                    parseSQLDTARD(netSqldta);
+//
+//            // there may be externalized LOB data which also gets returned.
+//            peekCP = peekCodePoint();
+//            while (peekCP == CodePoint.EXTDTA) {
+//                copyEXTDTA(netSqldta);
+//                peekCP = peekCodePoint();
+//            }
+//            statementI.completeExecuteCall(netSqlca, netSqldta);
+        } else {
+            // if here, then assume an error reply message was returned.
+            parseExecuteError();
+        }
+
+        if (peekCP == CodePoint.PBSD) {
+            parsePBSD();
+            peekCP = peekCodePoint();
+        }
+    }
+    
+    private void parseResultSetProcedure(/*StatementCallbackInterface statementI*/) {
+        // when a stored procedure is called which returns result sets,
+        // the next thing to be returned after the optional transaction component
+        // is the summary component.
+        //
+        // Parse the Result Set Summary Component which consists of a
+        // Result Set Reply Message, SQLCARD or SQLDTARD, and an SQL Result Set
+        // Reply data object.  Also check for possible TYPDEF overrides before the
+        // OBJDSSs.
+        // This method returns an ArrayList of generated sections which contain the
+        // package and section information for the result sets which were opened on the
+        // server.
+
+        // the result set summary component consists of a result set reply message.
+        List<Section> sectionAL = parseRSLSETRM();
+
+        // following the RSLSETRM is an SQLCARD or an SQLDTARD.  check for a
+        // TYPDEFNAM or TYPDEFOVR before looking for these objects.
+        int peekCP = parseTypdefsOrMgrlvlovrs();
+
+        // The SQLCARD and the SQLDTARD are mutually exclusive.
+        // The SQLDTARD is returned if the stored procedure had parameters.
+        // (Note: the SQLDTARD contains an sqlca also.  this is the sqlca for the
+        // stored procedure call.
+//        Cursor netSqldta = null;
+        NetSqlca netSqlca = null;
+        if (peekCP == CodePoint.SQLCARD) {
+            netSqlca = parseSQLCARD(null);
+        } else {
+            // keep the PreparedStatementCallbackInterface, since only preparedstatement and callablestatement
+            // has parameters or singleton select which translates to sqldtard.
+            cursor = new Cursor();
+            netSqlca = parseSQLDTARD();//netSqldta);
+        }
+
+        // check for a possible TYPDEFNAM or TYPDEFOVR
+        // before the SQL Result Set Reply Data object
+        peekCP = parseTypdefsOrMgrlvlovrs();
+
+        int numberOfResultSets = parseSQLRSLRD(sectionAL);
+
+        // The result set summary component parsed above indicated how many result sets were opened
+        // by the stored pocedure call.  It contained section information for
+        // each of these result sets.  Loop through the section array and
+        // parse the result set component for each of the retunred result sets.
+        if(true)
+        throw new UnsupportedOperationException("@AGG LEFTOFF parse RS data back somehow");
+//        NetResultSet[] resultSets = new NetResultSet[numberOfResultSets];
+//        for (int i = 0; i < numberOfResultSets; i++) {
+//            // parse the result set component of the stored procedure reply.
+//            NetResultSet netResultSet = parseResultSetCursor(statementI, sectionAL.get(i));
+//            resultSets[i] = netResultSet;
+//        }
+
+        // LOBs may have been returned for one of the stored procedure parameters so
+        // check for any externalized data.
+        peekCP = peekCodePoint();
+        while (peekCP == CodePoint.EXTDTA) {
+            copyEXTDTA();
+            peekCP = peekCodePoint();
+        }
+//        statementI.completeExecuteCall(netSqlca, cursor, resultSets);
+        completeExecute(netSqlca);
+    }
+    
+    public void completeExecute(NetSqlca sqlca) {
+        if (sqlca == null) {
+            return;
+        }
+
+        int sqlcode = sqlca.getSqlCode();
+        if (sqlcode < 0) {
+            throw new IllegalStateException("" + sqlcode);
+//            agent_.accumulateReadException(new SqlException(agent_.logWriter_, sqlca));
+        } else {
+            long updateCount_ = sqlca.getUpdateCount(); // TODO: @AGG return this?
+            // sometime for call statement, protocol will return updateCount_, we will always set that to 0
+            // sqlMode_ is not set for statements, only for prepared statements
+//            if (sqlMode_ == isCall__) {
+//                updateCount_ = -1L;
+//            }
+            // Sqlcode 466 indicates a call statement has issued and result sets returned.
+            // This is a good place to set some state variable to indicate result sets are open
+            // for call, so that when autocommit is true, commit will not be issued until the
+            // result sets are closed.
+            // Currently, commit is not issued even there is no result set.
+            // do not externalize sqlcode +100
+            if (sqlcode > 0 && sqlcode != 466 && sqlcode != 100) {
+                System.out.println("WARN: sqlcode: " + sqlcode);
+//                accumulateWarning(new SqlWarning(agent_.logWriter_, sqlca));
+            }
+        }
+    }
+    
+    void copyEXTDTA() {
+//        try {
+            parseLengthAndMatchCodePoint(CodePoint.EXTDTA);
+            byte[] data = null;
+            // TODO @AGG encryption
+//            if (longValueForDecryption_ == null) {
+                //data = (getData(null)).toByteArray();
+                data = getData().array();
+//            } else {
+//                data = longValueForDecryption_;
+//                dssLength_ = 0;
+//                longValueForDecryption_ = null;
+//            }
+            cursor.extdtaData_.add(data);
+//        } catch (OutOfMemoryError e) {
+//            agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//                new ClientMessageId(SQLState.NET_LOB_DATA_TOO_LARGE_FOR_JVM), e));
+//        }
+    }
+    
+    private int parseSQLRSLRD(List<Section> sections) {
+        parseLengthAndMatchCodePoint(CodePoint.SQLRSLRD);
+        return parseSQLRSLRDarray(sections);
+    }
+    
+    // SQLRSLRD : FDOCA EARLY ARRAY
+    // Data Array of a Result Set
+    //
+    // FORMAT FOR ALL SQLAM LEVELS
+    //   SQLNUMROW; ROW LID 0x68; ELEMENT TAKEN 0(all); REP FACTOR 1
+    //   SQLRSROW; ROW LID 0x6F; ELEMENT TAKEN 0(all); REP FACTOR 0(all)
+    //
+    // SQL Result Set Reply Data (SQLRSLRD) is a byte string that specifies
+    // information about result sets returned as reply data in the response to
+    // an EXCSQLSTT command that invokes a stored procedure
+    private int parseSQLRSLRDarray(List<Section> sections) {
+        int numOfResultSets = parseSQLNUMROW();
+        for (int i = 0; i < numOfResultSets; i++) {
+            parseSQLRSROW(sections.get(i));
+        }
+        return numOfResultSets;
+    }
+    
+    // SQLRSROW : FDOCA EARLY ROW
+    // SQL Row Description for One Result Set Row
+    //
+    // FORMAT FOR ALL SQLAM LEVELS
+    //   SQLRSGRP; GROUP LID 0x5F; ELEMENT TAKEN 0(all); REP FACTOR 1
+    private void parseSQLRSROW(Section section) {
+        parseSQLRSGRP(section);
+    }
+    
+    // SQLRSGRP : EARLY FDOCA GROUP
+    // SQL Result Set Group Description
+    //
+    // FORMAT FOR SQLAM >= 7
+    //   SQLRSLOCATOR; PROTOCOL TYPE RSL; ENVLID 0x14; Length Override 4
+    //   SQLRSNAME_m; PROTOCOL TYPE VCM; ENVLID 0x3E; Length Override 255
+    //   SQLRSNAME_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255
+    //   SQLRSNUMROWS; PROTOCOL TYPE I4; ENVLID 0x02; Length Override 4
+    private void parseSQLRSGRP(Section section) {
+
+        int rsLocator = buffer.readInt();//readInt();
+        String rsName = parseVCMorVCS();  // ignore length change bt SQLAM 6 and 7
+        int rsNumRows = buffer.readInt();//readInt();
+        // currently rsLocator and rsNumRows are not being used.
+        section.setCursorName(rsName);
+    }
+    
+    private String parseVCMorVCS() {
+        String stringToBeSet = null;
+
+        int vcm_length = readUnsignedShort();
+        if (vcm_length > 0) {
+            stringToBeSet = readString(vcm_length, Typdef.targetTypdef.getCcsidMbcEncoding());
+        }
+        int vcs_length = readUnsignedShort();
+        if (vcm_length > 0 && vcs_length > 0) {
+            throw new IllegalStateException("NET_VCM_VCS_LENGTHS_INVALID");
+//            agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//                new ClientMessageId(SQLState.NET_VCM_VCS_LENGTHS_INVALID)));
+        } else if (vcs_length > 0) {
+            stringToBeSet = readString(vcs_length, Typdef.targetTypdef.getCcsidSbcEncoding());
+        }
+
+        return stringToBeSet;
+    }
+    
+    // SQL Data Reply Data consists of output data from the relational database (RDB)
+    // processing of an SQL statement.  It also includes a description of the data.
+    //
+    // Returned from Server:
+    //   FDODSC - required
+    //   FDODTA - required
+    private NetSqlca parseSQLDTARD() { //Cursor netSqldta) {
+        boolean fdodscReceived = false;
+        boolean fdodtaReceived = false;
+
+        parseLengthAndMatchCodePoint(CodePoint.SQLDTARD);
+        pushLengthOnCollectionStack();
+
+        NetSqlca netSqlca = null;
+        int peekCP = peekCodePoint();
+        while (peekCP != END_OF_COLLECTION) {
+
+            boolean foundInPass = false;
+
+            if (peekCP == CodePoint.FDODSC) {
+                foundInPass = true;
+                fdodscReceived = checkAndGetReceivedFlag(fdodscReceived);
+                parseFDODSC();//netSqldta);
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.FDODTA) {
+                foundInPass = true;
+                fdodtaReceived = checkAndGetReceivedFlag(fdodtaReceived);
+                netSqlca = parseFDODTA();//netSqldta);
+                peekCP = peekCodePoint();
+            }
+
+            if (!foundInPass) {
+                throwUnknownCodepoint(peekCP);
+            }
+
+        }
+        popCollectionStack();
+        if (!fdodscReceived)
+            throwMissingRequiredCodepoint("FDODSC", CodePoint.FDODSC);
+        if (!fdodtaReceived)
+            throwMissingRequiredCodepoint("FDODTA", CodePoint.FDODTA);
+        cursor.calculateColumnOffsetsForRow();
+        return netSqlca;
+    }
+    
+    private void parseFDODSC() {
+        parseLengthAndMatchCodePoint(CodePoint.FDODSC);
+        parseSQLDTARDarray(false); // false means don't just skip the bytes
+    }
+    
+    private NetSqlca parseFDODTA() {
+        parseLengthAndMatchCodePoint(CodePoint.FDODTA);
+        int ddmLength = getDdmLength();
+        ensureBLayerDataInBuffer(ddmLength);
+        int start = buffer.readerIndex();
+//        mark();
+        NetSqlca netSqlca = parseSQLCARDrow(null);
+//        int length = getFastSkipSQLCARDrowLength();
+        int length = buffer.readerIndex() - start;
+        adjustLengths(length);
+        parseFastSQLDTARDdata();//netCursor);
+        return netSqlca;
+    }
+    
+    private void parseFastSQLDTARDdata() {
+        parseSQLDTARDdata();
+//        netCursor.dataBufferStream_ = getFastData(netCursor.dataBufferStream_);
+//        netCursor.dataBuffer_ = netCursor.dataBufferStream_.toByteArray();
+//        netCursor.lastValidBytePosition_ = netCursor.dataBuffer_.length;
+    }
+
+    
+    // RDB Result Set Reply Message (RSLSETRM) indicates that an
+    // EXCSQLSTT command invoked a stored procedure, that the execution
+    // of the stored procedure generated one or more result sets, and
+    // additional information aobut these result sets follows the SQLCARD and
+    // SQLDTARD in the reply data of the response
+    //
+    // Returned from Server:
+    //   SVRCOD - required  (0 INFO)
+    //   PKGSNLST - required
+    //   SRVDGN - optional
+    private List<Section> parseRSLSETRM() {
+        boolean svrcodReceived = false;
+        int svrcod = CodePoint.SVRCOD_INFO;
+        boolean pkgsnlstReceived = false;
+        List<Section> pkgsnlst = null;
+
+        parseLengthAndMatchCodePoint(CodePoint.RSLSETRM);
+        pushLengthOnCollectionStack();
+        int peekCP = peekCodePoint();
+
+        while (peekCP != END_OF_COLLECTION) {
+
+            boolean foundInPass = false;
+
+            if (peekCP == CodePoint.SVRCOD) {
+                foundInPass = true;
+                svrcodReceived = checkAndGetReceivedFlag(svrcodReceived);
+                svrcod = parseSVRCOD(CodePoint.SVRCOD_INFO, CodePoint.SVRCOD_INFO);
+                peekCP = peekCodePoint();
+            }
+
+            if (peekCP == CodePoint.PKGSNLST) {
+                // contain repeatable PKGNAMCSN
+                foundInPass = true;
+                pkgsnlstReceived = checkAndGetReceivedFlag(pkgsnlstReceived);
+                pkgsnlst = parsePKGSNLST();
+                peekCP = peekCodePoint();
+            }
+
+            if (!foundInPass) {
+                throwUnknownCodepoint(peekCP);
+//                doPrmnsprmSemantics(peekCP);
+            }
+
+        }
+        popCollectionStack();
+        if (!svrcodReceived)
+            throwMissingRequiredCodepoint("SVRCOD", CodePoint.SVRCOD);
+        if (!pkgsnlstReceived)
+            throwMissingRequiredCodepoint("PKGSNLST", CodePoint.PKGSNLST);
+
+//        netAgent_.setSvrcod(svrcod);
+
+        return pkgsnlst;
+    }
+    
+    // RDB Package Namce, Consistency Token, and Section Number List
+    // specifies a list of fully qualified names of specific sections
+    // within one or more packages.
+    private List<Section> parsePKGSNLST() {
+        ArrayList<Section> pkgsnlst = new ArrayList<Section>();
+
+        parseLengthAndMatchCodePoint(CodePoint.PKGSNLST);
+        pushLengthOnCollectionStack();
+        while (peekCodePoint() != END_OF_COLLECTION) {
+            pkgsnlst.add(parsePKGNAMCSN(false));
+        }
+        popCollectionStack();
+        return pkgsnlst;
+    }
+    
+    // RDB Package name, consistency token, and section number
+    // specifies the fully qualified name of a relational
+    // database package, its consistency token, and a specific
+    // section within a package.
+    //
+    // Only called for generated secctions from a callable statement.
+    //
+    Section parsePKGNAMCSN(boolean skip) {
+        parseLengthAndMatchCodePoint(CodePoint.PKGNAMCSN);
+        if (skip) {
+            skipBytes();
+            return null;
+        }
+
+        // Still need to populate the logical members in case of an "set current packageset"
+        String rdbnam = null;
+        String rdbcolid = null;
+        String pkgid = null;
+        byte[] pkgcnstkn = null;
+
+        int pkgsn = 0;
+        byte[] pkgnamcsnBytes = null;
+        int pkgnamcsnLength = 0;
+
+        int ddmLength = getDdmLength();
+        int offset = 0;
+
+        ensureBLayerDataInBuffer(ddmLength);
+
+        int maxDDMlength;
+        //For SQLAM level 7, this was harcoded to be 781 in 10.10 codeline. But
+        // after DERBY-4805 is fixed in Derby 10.11, we allow 1024 bytes for
+        // RDBNAM rather than just 255 characters. Because of this, the 
+        // DDM length in Derby 10.11 can be higher than 781. To be precise,
+        // it is 781-255+1024=1550. The following if statement is doing this
+        // calculation using constant identifiers rather than constant values
+//        if (netAgent_.netConnection_.databaseMetaData_.serverSupportLongRDBNAM()) {
+            maxDDMlength = 781 - DRDAConstants.PKG_IDENTIFIER_MAX_LEN + DRDAConstants.RDBNAM_MAX_LEN;
+//        } else {
+//            maxDDMlength = 781;
+//        }
+
+        if (ddmLength == 64) {
+            // read all the bytes except the section number into the byte[] for caching
+            pkgnamcsnLength = ddmLength - 2;
+            //pkgnamcsnBytes = readBytes (pkgnamcsnLength);
+            pkgnamcsnBytes = new byte[pkgnamcsnLength];
+            // readFast() does a read without moving the read head.
+            offset = peekFastBytes(pkgnamcsnBytes, offset, pkgnamcsnLength);
+
+            // populate the logical members
+            rdbnam = readFastString(18);   // RDB name
+            rdbcolid = readFastString(18); // RDB Collection ID
+            pkgid = readFastString(18);    // RDB Package ID
+            pkgcnstkn = readFastBytes(8);  // Package Consistency Token
+        } else if ((ddmLength >= 71) && (ddmLength <= maxDDMlength)) {
+            // this is the new SCLDTA format.
+
+            // new up a byte[] to cache all the bytes except the 2-byte section number
+            pkgnamcsnBytes = new byte[ddmLength - 2];
+
+            // get rdbnam
+            int scldtaLen = peekFastLength();
+            int maxRDBlength = DRDAConstants.RDBNAM_MAX_LEN;
+//                    ((netAgent_.netConnection_.databaseMetaData_.serverSupportLongRDBNAM())? 
+//                            NetConfiguration.RDBNAM_MAX_LEN 
+//                            : NetConfiguration.PKG_IDENTIFIER_MAX_LEN);
+            if (scldtaLen < DRDAConstants.PKG_IDENTIFIER_FIXED_LEN || scldtaLen > maxRDBlength) {
+                throw new IllegalStateException("NET_SQLCDTA_INVALID_FOR_RDBNAM " + scldtaLen);
+//                agent_.accumulateChainBreakingReadExceptionAndThrow(
+//                    new DisconnectException(agent_,
+//                        new ClientMessageId(
+//                            SQLState.NET_SQLCDTA_INVALID_FOR_RDBNAM),
+//                    scldtaLen));
+//                return null;
+            }
+            // read 2+scldtaLen number of bytes from the reply buffer into the pkgnamcsnBytes
+            //offset = readBytes (pkgnamcsnBytes, offset, 2+scldtaLen);
+            offset = peekFastBytes(pkgnamcsnBytes, offset, 2 + scldtaLen);
+            skipFastBytes(2);
+            rdbnam = readFastString(scldtaLen);
+
+            // get rdbcolid
+            scldtaLen = peekFastLength();
+            if (scldtaLen < 18 || scldtaLen > 255) {
+                throw new IllegalStateException("NET_SQLCDTA_INVALID_FOR_RDBCOLID " + scldtaLen);
+//                agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//                    new ClientMessageId(SQLState.NET_SQLCDTA_INVALID_FOR_RDBCOLID),
+//                    scldtaLen));
+//                return null;
+            }
+            // read 2+scldtaLen number of bytes from the reply buffer into the pkgnamcsnBytes
+            offset = peekFastBytes(pkgnamcsnBytes, offset, 2 + scldtaLen);
+            skipFastBytes(2);
+            rdbcolid = readFastString(scldtaLen);
+
+            // get pkgid
+            scldtaLen = peekFastLength();
+            if (scldtaLen < 18 || scldtaLen > 255) {
+                throw new IllegalStateException("NET_SQLCDTA_INVALID_FOR_PKGID " + scldtaLen);
+//                agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//                    new ClientMessageId(SQLState.NET_SQLCDTA_INVALID_FOR_PKGID),
+//                    scldtaLen));
+//                return null; // To make compiler happy.
+            }
+            // read 2+scldtaLen number of bytes from the reply buffer into the pkgnamcsnBytes
+            offset = peekFastBytes(pkgnamcsnBytes, offset, 2 + scldtaLen);
+            skipFastBytes(2);
+            pkgid = readFastString(scldtaLen);
+
+            // get consistency token
+            offset = peekFastBytes(pkgnamcsnBytes, offset, 8);
+            pkgcnstkn = readFastBytes(8);
+
+        } else {
+            throw new IllegalStateException("NET_PGNAMCSN_INVALID_AT_SQLAM " + ddmLength);
+//            agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
+//                new ClientMessageId(SQLState.NET_PGNAMCSN_INVALID_AT_SQLAM),
+//                ddmLength, netAgent_.targetSqlam_));
+//            return null;  // To make compiler happy.
+        }
+
+        pkgsn = readFastUnsignedShort();  // Package Section Number.
+        adjustLengths(ddmLength);
+        // this is a server generated section
+        // the -1 is set for holdability and it is not used for generated sections
+        Section section = new Section(pkgid, pkgsn, null, -1, true);
+        section.setPKGNAMCBytes(pkgnamcsnBytes);
+        return section;
+    }
+
+    
+    private void parseExecuteError() {
+        int peekCP = peekCodePoint();
+        switch (peekCP) {
+        case CodePoint.ABNUOWRM:
+            {
+                throw new IllegalStateException("Abnormal end UOW");
+//                //passing the StatementCallbackInterface implementation will
+//                //help in retrieving the the UnitOfWorkListener that needs to
+//                //be rolled back
+//                NetSqlca sqlca = parseAbnormalEndUow(statementI);
+//                statementI.completeSqlca(sqlca);
+//                break;
+            }
+        case CodePoint.CMDCHKRM:
+            parseCMDCHKRM();
+            break;
+        case CodePoint.DTAMCHRM:
+            parseDTAMCHRM();
+            break;
+        case CodePoint.OBJNSPRM:
+            parseOBJNSPRM();
+            break;
+        case CodePoint.RDBNACRM:
+            parseRDBNACRM();
+            break;
+        case CodePoint.SQLERRRM:
+            {
+                NetSqlca sqlca = parseSqlErrorCondition();
+                NetSqlca.complete(sqlca);
+                //statementI.completeSqlca(sqlca);
+                break;
+            }
+        default:
+            parseCommonError(peekCP);
+            break;
+        }
     }
     
     // Parse the reply for the Close Query Command.
@@ -554,6 +1231,11 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
         if (columnMetaData == null)
             throw new IllegalStateException("ColumnMetaData has not been created yet");
         return columnMetaData;
+    }
+    
+    public void setColumnMetaData(ColumnMetaData md) {
+        Objects.requireNonNull(md);
+        this.columnMetaData = md;
     }
     
     private void parseSQLDTARDdata(/*NetCursor netCursor*/) {
@@ -2048,8 +2730,7 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
             return;
         }
         
-        buffer.skipBytes(8); // manually skip 8 bytes
-        // @AGG should be at 165 (0xA5) here
+        buffer.skipBytes(8); // @AGG manually skip 8 bytes
 
         //   SQLXKEYMEM; PROTOCOL TYPE I2; ENVLID 0x04; Length Override 2
         short sqlxkeymem = readFastShort(); // primary key == 1
@@ -2084,8 +2765,9 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
         //   SQLXNAME_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255
         String sqlxname = parseFastVCMorVCS(); // ID
         
-        // @AGG manually skip remaining bytes
-        buffer.skipBytes(5);
+        // @AGG manually skip remaining (unknown) bytes
+        if (buffer.isReadable(5))
+            buffer.skipBytes(5);
 
         if (columnMetaData.sqlxKeymem_ == null) {
             columnMetaData.sqlxKeymem_ = new short[columnMetaData.columns_];

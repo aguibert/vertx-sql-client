@@ -7,6 +7,8 @@ import java.sql.Connection;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
+import org.apache.derby.client.am.DisconnectException;
+
 import io.netty.buffer.ByteBuf;
 import io.vertx.db2client.impl.codec.DB2Codec;
 
@@ -1023,6 +1025,22 @@ public abstract class DRDAResponse {
 //            netAgent_.exceptionConvertingRdbnam = null;
 //        }
 //        agent_.accumulateChainBreakingReadExceptionAndThrow(e);
+    }
+    
+    // Read "length" number of bytes from the buffer into the byte array b starting from offset
+    // "offset".  The current offset in the buffer does not change.
+    protected final int peekFastBytes(byte[] b, int offset, int length) {
+        for (int i = 0; i < length; i++) {
+            b[offset + i] = buffer.getByte(buffer.readerIndex() + i);
+//            b[offset + i] = buffer_[pos_ + i];
+        }
+        return offset + length;
+    }
+    
+    protected final int peekFastLength() {
+        return buffer.getShort(buffer.readerIndex());
+//        return (((buffer_[pos_] & 0xff) << 8) +
+//                ((buffer_[pos_ + 1] & 0xff) << 0));
     }
 
     protected final int peekCodePoint() {

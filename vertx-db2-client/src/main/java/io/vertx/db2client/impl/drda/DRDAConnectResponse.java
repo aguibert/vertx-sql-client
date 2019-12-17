@@ -83,6 +83,26 @@ public class DRDAConnectResponse extends DRDAResponse {
         }
     }
     
+    void parseCommonError(int peekCP) {
+        throw new IllegalStateException("Common error: " + Integer.toHexString(peekCP));
+//        switch (peekCP) {
+//        case CodePoint.CMDNSPRM:
+//            parseCMDNSPRM();
+//            break;
+//        case CodePoint.PRCCNVRM:
+//            parsePRCCNVRM();
+//            break;
+//        case CodePoint.SYNTAXRM:
+//            parseSYNTAXRM();
+//            break;
+//        case CodePoint.VALNSPRM:
+//            parseVALNSPRM();
+//            break;
+//        default:
+//            doObjnsprmSemantics(peekCP);
+//        }
+    }
+    
     // RDB Not Accessed Reply Message indicates that the access relational
     // database command (ACCRDB) was not issued prior to a command
     // requesting the RDB Services.

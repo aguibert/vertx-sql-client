@@ -1,10 +1,15 @@
 package io.vertx.db2client.impl.drda;
 
+import java.math.BigDecimal;
 import java.net.Inet4Address;
 import java.net.UnknownHostException;
+import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Hashtable;
+
+import org.apache.derby.client.net.SQLState;
 
 import io.netty.buffer.ByteBuf;
 
@@ -363,6 +368,44 @@ public abstract class DRDARequest {
         buffer.setShort(lengthPos, (short) (stringByteLength + 4));
     }
     
+    private void writeLidAndLengths(int[][] lidAndLengthOverrides, int count, int offset) {
+        ensureLength(count * 3);
+        for (int i = 0; i < count; i++, offset++) {
+            buffer.writeByte((byte) lidAndLengthOverrides[offset][0]);
+            buffer.writeShort((short) lidAndLengthOverrides[offset][1]);
+        }
+    }
+    
+    // if mdd overrides are not required, lids and lengths are copied straight into the
+    // buffer.
+    // otherwise, lookup the protocolType in the map.  if an entry exists, substitute the
+    // protocolType with the corresponding override lid.
+    final void writeLidAndLengths(int[][] lidAndLengthOverrides,
+                                  int count,
+                                  int offset,
+                                  boolean mddRequired,
+                                  Hashtable map) {
+        if (!mddRequired) {
+            writeLidAndLengths(lidAndLengthOverrides, count, offset);
+        }
+        // if mdd overrides are required, lookup the protocolType in the map, and substitute
+        // the protocolType with the override lid.
+        else {
+            ensureLength(count * 3);
+            int protocolType, overrideLid;
+            Object entry;
+            for (int i = 0; i < count; i++, offset++) {
+                protocolType = lidAndLengthOverrides[offset][0];
+                // lookup the protocolType in the protocolType->overrideLid map
+                // if an entry exists, replace the protocolType with the overrideLid
+                entry = map.get(protocolType);
+                overrideLid = (entry == null) ? protocolType : ((Integer) entry).intValue();
+                buffer.writeByte((byte) overrideLid);
+                buffer.writeShort((short) lidAndLengthOverrides[offset][1]);
+            }
+        }
+    }
+    
     // helper method to calculate the minimum number of extended length bytes needed
     // for a ddm.  a return value of 0 indicates no extended length needed.
     private final int calculateExtendedLengthByteCount(long ddmSize) //throws SQLException
@@ -403,6 +446,56 @@ public abstract class DRDARequest {
     final void writeLengthCodePoint(int length, int codePoint) {
         buffer.writeShort((short) length);
         buffer.writeShort((short) codePoint);
+    }
+    
+    // insert 3 unsigned bytes into the buffer.  this was
+    // moved up from NetStatementRequest for performance
+    final void buildTripletHeader(int tripletLength,
+                                  int tripletType,
+                                  int tripletId) {
+        ensureLength(3);
+        buffer.writeByte((byte) tripletLength);
+        buffer.writeByte((byte) tripletType);
+        buffer.writeByte((byte) tripletId);
+    }
+    
+    /**
+     * Writes a long into the buffer, using six bytes.
+     */
+    final void writeLong6Bytes(long v) {
+        ensureLength(6);
+        buffer.writeShort((short) (v >> 32));
+        buffer.writeInt((int) v);
+    }
+    
+    // insert a java.math.BigDecimal into the buffer.
+    final void writeBigDecimal(BigDecimal v,
+                               int declaredPrecision,
+                               int declaredScale) {
+        ensureLength(16);
+        // @AGG simply write bytes normally here instead of manually incrementing index after?
+        int length = Decimal.bigDecimalToPackedDecimalBytes(
+                buffer, buffer.writerIndex(),
+                v, declaredPrecision, declaredScale);
+        buffer.writerIndex(buffer.writerIndex() + length);
+    }
+    
+    // follows the TYPDEF rules (note: don't think ddm char data is ever length
+    // delimited)
+    // Will write a varchar mixed or single
+    //  this was writeLDString
+    final void writeSingleorMixedCcsidLDString(String s, Charset encoding) {
+        byte[] b = s.getBytes(encoding);
+        if (b.length > 0x7FFF) {
+            throw new IllegalArgumentException("SQLState.LANG_STRING_TOO_LONG 32767");
+        }
+        writeLDBytes(b);
+    }
+    
+    final void writeLDBytes(byte[] bytes) {
+        buffer.writeShort(bytes.length);
+        buffer.writeBytes(bytes);
+//        writeLDBytesX(bytes.length, bytes);
     }
     
     // insert a 4 byte length/codepoint pair and a 1 byte unsigned value into the buffer.

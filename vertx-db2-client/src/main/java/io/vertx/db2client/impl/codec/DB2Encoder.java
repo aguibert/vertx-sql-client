@@ -53,7 +53,11 @@ class DB2Encoder extends ChannelOutboundHandlerAdapter {
       chctx.fireChannelRead(resp);
     };
     inflight.add(codec);
+    try {
     codec.encode(this);
+    } catch (Exception e) {
+        e.printStackTrace();
+    }
   }
 
   private CommandCodec<?, ?> wrap(CommandBase<?> cmd) {
@@ -61,14 +65,14 @@ class DB2Encoder extends ChannelOutboundHandlerAdapter {
       return new InitialHandshakeCommandCodec((InitialHandshakeCommand) cmd);
     } else if (cmd instanceof SimpleQueryCommand) {
       return new SimpleQueryCommandCodec((SimpleQueryCommand) cmd);
-//    } else if (cmd instanceof ExtendedQueryCommand) {
-//      return new ExtendedQueryCommandCodec((ExtendedQueryCommand) cmd);
+    } else if (cmd instanceof ExtendedQueryCommand) {
+      return new ExtendedQueryCommandCodec((ExtendedQueryCommand) cmd);
 //    } else if (cmd instanceof ExtendedBatchQueryCommand<?>) {
 //      return new ExtendedBatchQueryCommandCodec<>((ExtendedBatchQueryCommand<?>) cmd);
     } else if (cmd instanceof CloseConnectionCommand) {
       return new CloseConnectionCommandCodec((CloseConnectionCommand) cmd);
-//    } else if (cmd instanceof PrepareStatementCommand) {
-//      return new PrepareStatementCodec((PrepareStatementCommand) cmd);
+    } else if (cmd instanceof PrepareStatementCommand) {
+      return new PrepareStatementCodec((PrepareStatementCommand) cmd);
 //    } else if (cmd instanceof CloseStatementCommand) {
 //      return new CloseStatementCommandCodec((CloseStatementCommand) cmd);
 //    } else if (cmd instanceof CloseCursorCommand) {

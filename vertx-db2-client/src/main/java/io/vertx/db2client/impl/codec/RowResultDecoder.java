@@ -29,12 +29,7 @@ class RowResultDecoder<C, R> extends RowDecoder<C, R> {
   
   public boolean next() {
       response.readOpenQueryData();
-      try {
-        return cursor.next();
-    } catch (SQLException e) {
-        e.printStackTrace();
-        return false;
-    }
+    return cursor.next();
   }
 
     @Override
