@@ -2744,10 +2744,8 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
         //   SQLXPARMMODE; PROTOCOL TYPE I2; ENVLID 0x04; Length Override 2
         short sqlxparmmode = readFastShort(); // 0
 
-        // @AGG should be at 0xAD(173) here
-        
         //   SQLXRDBNAM; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 1024
-        String sqlxrdbnam = parseFastVCS(); // QUARK_DB
+        String sqlxrdbnam = parseFastVCS(); // db name
 
         //   SQLXCORNAME_m; PROTOCOL TYPE VCM; ENVLID 0x3E; Length Override 255
         //   SQLXCORNAME_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255
@@ -2759,7 +2757,7 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
 
         //   SQLXSCHEMA_m; PROTOCOL TYPE VCM; ENVLID 0x3E; Length Override 255
         //   SQLXSCHEMA_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255
-        String sqlxschema = parseFastVCMorVCS(); // QUARK?
+        String sqlxschema = parseFastVCMorVCS(); // username
 
         //   SQLXNAME_m; PROTOCOL TYPE VCM; ENVLID 0x3E; Length Override 255
         //   SQLXNAME_s; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 255

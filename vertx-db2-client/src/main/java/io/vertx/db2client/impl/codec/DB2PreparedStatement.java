@@ -25,35 +25,35 @@ import io.vertx.sqlclient.impl.TupleInternal;
 
 class DB2PreparedStatement implements PreparedStatement {
 
-  final String sql;
-  final DB2ParamDesc paramDesc;
-  final DB2RowDesc rowDesc;
-  final Section section;
+    final String sql;
+    final DB2ParamDesc paramDesc;
+    final DB2RowDesc rowDesc;
+    final Section section;
 
-  DB2PreparedStatement(String sql, DB2ParamDesc paramDesc, DB2RowDesc rowDesc, Section section) {
-    this.paramDesc = paramDesc;
-    this.rowDesc = rowDesc;
-    this.sql = sql;
-    this.section = section;
-  }
+    DB2PreparedStatement(String sql, DB2ParamDesc paramDesc, DB2RowDesc rowDesc, Section section) {
+        this.paramDesc = paramDesc;
+        this.rowDesc = rowDesc;
+        this.sql = sql;
+        this.section = section;
+    }
 
-  @Override
-  public ParamDesc paramDesc() {
-    return paramDesc;
-  }
+    @Override
+    public ParamDesc paramDesc() {
+        return paramDesc;
+    }
 
-  @Override
-  public RowDesc rowDesc() {
-    return rowDesc;
-  }
+    @Override
+    public RowDesc rowDesc() {
+        return rowDesc;
+    }
 
-  @Override
-  public String sql() {
-    return sql;
-  }
-  
-  @Override
-  public String prepare(TupleInternal values) {
-    return paramDesc.prepare(values);
-  }
+    @Override
+    public String sql() {
+        return sql;
+    }
+
+    @Override
+    public String prepare(TupleInternal values) {
+        return paramDesc.prepare(values);
+    }
 }

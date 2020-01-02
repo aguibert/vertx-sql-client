@@ -1,7 +1,7 @@
 package io.vertx.db2client.impl;
 
-import io.vertx.core.json.JsonObject;
-import io.vertx.db2client.DB2ConnectOptions;
+import static java.lang.Integer.parseInt;
+import static java.lang.String.format;
 
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
@@ -10,15 +10,14 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static java.lang.Integer.*;
-import static java.lang.String.*;
+import io.vertx.core.json.JsonObject;
 
 /**
- * This is a parser for parsing connection URIs of MySQL.
- * @see <a href="https://dev.mysql.com/doc/refman/8.0/en/connecting-using-uri-or-key-value-pairs.html#connecting-using-uri">MySQL official documentation</a>: [scheme://][user[:[password]]@]host[:port][/schema][?attribute1=value1&attribute2=value2...
+ * This is a parser for parsing connection URIs of DB2.
+ * @see <a href="https://www.ibm.com/support/knowledgecenter/SSEPGG_9.7.0/com.ibm.db2.luw.apdv.java.doc/src/tpc/imjcc_r0052342.html">DB2 official doc</a> 
  */
 public class DB2ConnectionUriParser {
-    // TODO @AGG
+    // TODO @AGG implement URI parsing
   private static final String SCHEME_DESIGNATOR_REGEX = "(db2)://"; // URI scheme designator
   private static final String USER_INFO_REGEX = "((?<userinfo>[a-zA-Z0-9\\-._~%!]+(:[a-zA-Z0-9\\-._~%!]*)?)@)?"; // user name and password
   private static final String NET_LOCATION_REGEX = "(?<host>[0-9.]+|\\[[a-zA-Z0-9:]+]|[a-zA-Z0-9\\-._~%]+)"; // ip v4/v6 address or host name
@@ -157,10 +156,6 @@ public class DB2ConnectionUriParser {
           case "schema":
             configuration.put("database", value);
             break;
-          case "useaffectedrows":
-            configuration.put("useAffectedRows", Boolean.parseBoolean(value));
-            break;
-          //TODO Additional Connection Parameters
           default:
             configuration.put(key, value);
             break;

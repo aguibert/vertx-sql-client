@@ -1,5 +1,8 @@
 package io.vertx.db2client;
 
+import java.util.List;
+import java.util.stream.Collector;
+
 import io.vertx.codegen.annotations.GenIgnore;
 import io.vertx.codegen.annotations.VertxGen;
 import io.vertx.core.AsyncResult;
@@ -7,20 +10,15 @@ import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.db2client.impl.DB2PoolImpl;
-import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Pool;
+import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.SqlResult;
 import io.vertx.sqlclient.Tuple;
 
-import static io.vertx.db2client.DB2ConnectOptions.*;
-
-import java.util.List;
-import java.util.stream.Collector;
-
 /**
- * A pool of MySQL connections.
+ * A pool of DB2 connections.
  */
 @VertxGen
 public interface DB2Pool extends Pool {
@@ -54,7 +52,7 @@ public interface DB2Pool extends Pool {
   }
 
   /**
-   * Create a connection pool to the MySQL server configured with the given {@code connectOptions} and {@code poolOptions}.
+   * Create a connection pool to the DB2 server configured with the given {@code connectOptions} and {@code poolOptions}.
    *
    * @param connectOptions the options for the connection
    * @param poolOptions the options for creating the pool
@@ -65,7 +63,7 @@ public interface DB2Pool extends Pool {
       throw new IllegalStateException("Running in a Vertx context => use MySQLPool#pool(Vertx, MySQLConnectOptions, PoolOptions) instead");
     }
     VertxOptions vertxOptions = new VertxOptions();
-    vertxOptions.setBlockedThreadCheckInterval(1000 * 60 * 60); // TODO only for debugging purposes
+    vertxOptions.setBlockedThreadCheckInterval(1000 * 60 * 60); // TODO @AGG only for debugging purposes
     Vertx vertx = Vertx.vertx(vertxOptions);
     return new DB2PoolImpl(vertx.getOrCreateContext(), true, connectOptions, poolOptions);
   }

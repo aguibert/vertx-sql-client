@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Julien Viet
+ * Copyright (C) 2019,2020 Andy Guibert
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  *
  */
 
-@ModuleGen(name = "vertx-mysql-client", groupPackage = "io.vertx")
+@ModuleGen(name = "vertx-db2-client", groupPackage = "io.vertx")
 package io.vertx.db2client;
 
 import io.vertx.codegen.annotations.ModuleGen;

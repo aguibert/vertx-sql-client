@@ -20,12 +20,8 @@ package io.vertx.db2client.impl;
 import java.util.Map;
 
 import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.DecoderException;
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Context;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.Promise;
 import io.vertx.core.impl.NetSocketInternal;
 import io.vertx.db2client.impl.codec.DB2Codec;
 import io.vertx.db2client.impl.command.InitialHandshakeCommand;
@@ -38,31 +34,32 @@ import io.vertx.sqlclient.impl.command.CommandResponse;
  */
 public class DB2SocketConnection extends SocketConnectionBase {
 
-  private DB2Codec codec;
+    private DB2Codec codec;
+    private String dbName;
 
-  public DB2SocketConnection(NetSocketInternal socket,
-                               boolean cachePreparedStatements,
-                               int preparedStatementCacheSize,
-                               int preparedStatementCacheSqlLimit,
-                               Context context) {
-    super(socket, cachePreparedStatements, preparedStatementCacheSize, preparedStatementCacheSqlLimit, 1, context);
-  }
+    public DB2SocketConnection(NetSocketInternal socket, boolean cachePreparedStatements,
+            int preparedStatementCacheSize, int preparedStatementCacheSqlLimit, Context context) {
+        super(socket, cachePreparedStatements, preparedStatementCacheSize, preparedStatementCacheSqlLimit, 1, context);
+    }
 
-  void sendStartupMessage(String username,
-                          String password,
-                          String database,
-                          Map<String, String> properties,
-                          Handler<? super CommandResponse<Connection>> completionHandler) {
-    InitialHandshakeCommand cmd = new InitialHandshakeCommand(this, username, password, database, properties);
-    cmd.handler = completionHandler;
-    schedule(cmd);
-  }
+    void sendStartupMessage(String username, String password, String database, Map<String, String> properties,
+            Handler<? super CommandResponse<Connection>> completionHandler) {
+        this.dbName = database;
+        System.out.println("@AGG properties: " + properties);
+        InitialHandshakeCommand cmd = new InitialHandshakeCommand(this, username, password, database, properties);
+        cmd.handler = completionHandler;
+        schedule(cmd);
+    }
 
-  @Override
-  public void init() {
-    codec = new DB2Codec(this);
-    ChannelPipeline pipeline = socket.channelHandlerContext().pipeline();
-    pipeline.addBefore("handler", "codec", codec);
-    super.init();
-  }
+    public String database() {
+        return dbName;
+    }
+
+    @Override
+    public void init() {
+        codec = new DB2Codec(this);
+        ChannelPipeline pipeline = socket.channelHandlerContext().pipeline();
+        pipeline.addBefore("handler", "codec", codec);
+        super.init();
+    }
 }

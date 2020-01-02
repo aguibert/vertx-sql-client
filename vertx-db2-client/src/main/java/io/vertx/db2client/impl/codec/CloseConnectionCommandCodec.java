@@ -1,14 +1,9 @@
 package io.vertx.db2client.impl.codec;
 
-import java.sql.ResultSet;
-
 import io.netty.buffer.ByteBuf;
 import io.vertx.db2client.impl.drda.CCSIDManager;
-import io.vertx.db2client.impl.drda.DRDAConnectRequest;
-import io.vertx.db2client.impl.drda.DRDAConnectResponse;
 import io.vertx.db2client.impl.drda.DRDAQueryRequest;
 import io.vertx.db2client.impl.drda.DRDAQueryResponse;
-import io.vertx.db2client.impl.drda.Section;
 import io.vertx.db2client.impl.drda.SectionManager;
 import io.vertx.sqlclient.impl.command.CloseConnectionCommand;
 
@@ -23,11 +18,12 @@ class CloseConnectionCommandCodec extends CommandCodec<Void, CloseConnectionComm
   @Override
   void encode(DB2Encoder encoder) {
     super.encode(encoder);
+    System.out.println("@AGG encode close");
     // TODO: @AGG should we also close statements/queries here?
     try {
         ByteBuf packet = allocateBuffer();
         DRDAQueryRequest closeCursor = new DRDAQueryRequest(packet, cm);
-        closeCursor.buildCLSQRY(SectionManager.INSTANCE.getDynamicSection(), "quark_db", 1); // @AGG guessing 1 on queryInstanceId
+        closeCursor.buildCLSQRY(SectionManager.INSTANCE.getDynamicSection(), encoder.socketConnection.database(), 1); // @AGG guessing 1 on queryInstanceId
         closeCursor.buildRDBCMM();
         closeCursor.completeCommand();
         sendNonSplitPacket(packet);
@@ -46,7 +42,7 @@ class CloseConnectionCommandCodec extends CommandCodec<Void, CloseConnectionComm
           closeCursor.readLocalCommit();
       } catch (Exception e) {
           payload.clear();
-//          e.printStackTrace();
+          e.printStackTrace();
       }
   }
 }

@@ -1,5 +1,8 @@
 package io.vertx.db2client.impl.drda;
 
+import java.net.Inet4Address;
+import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.sql.SQLException;
 import java.util.Objects;
 
@@ -19,7 +22,6 @@ public class DRDAConnectRequest extends DRDARequest {
     public void buildACCRDB(String rdbnam,
                      boolean readOnly,
                      byte[] crrtkn,
-                     byte[] prddta,
                      String typdef) {
         createCommand();
 
@@ -49,7 +51,7 @@ public class DRDAConnectRequest extends DRDARequest {
         // of the prddta bytes to write to the buffer. note: this length
         // doesn't include itself so increment by it by 1 to get the actual
         // length of this data.
-        buildPRDDTA(prddta);
+        buildPRDDTA();
 
 
         // the typdefnam parameter specifies the name of the data type to data representation
@@ -90,6 +92,141 @@ public class DRDAConnectRequest extends DRDARequest {
         // the command and the dss are complete so make the call to notify
         // the request object.
         updateLengthBytes();
+    }
+    
+    private byte[] getProductData() {
+        ByteBuffer prddta_ = ByteBuffer.allocate(DRDAConstants.PRDDTA_MAXSIZE);
+
+        for (int i = 0; i < DRDAConstants.PRDDTA_ACCT_SUFFIX_LEN_BYTE; i++) {
+            prddta_.put(i, ccsidManager.getCCSID().encode(" ").get());
+        }
+
+        // Start inserting data right after the length byte.
+        prddta_.position(DRDAConstants.PRDDTA_LEN_BYTE + 1);
+
+        prddta_.put(ccsidManager.getCCSID().encode(DRDAConstants.PRDID));//, prddta_);
+
+        prddta_.put(ccsidManager.getCCSID().encode(DRDAConstants.PRDDTA_PLATFORM_ID));
+//        success &= ccsidMgr.encode(
+//                CharBuffer.wrap(DRDAConstants.PRDDTA_PLATFORM_ID),
+//                prddta_, agent_);
+
+        int prddtaLen = prddta_.position();
+
+        String extnamTruncated = DRDAConstants.EXTNAM.substring(0, Math.min(DRDAConstants.EXTNAM.length(), DRDAConstants.PRDDTA_APPL_ID_FIXED_LEN));
+        prddta_.put(ccsidManager.getCCSID().encode(extnamTruncated));
+//        success &= ccsidMgr.encode(
+//                CharBuffer.wrap(extnam_, 0, extnamTruncateLength),
+//                prddta_, agent_);
+
+//        if (SanityManager.DEBUG) {
+//            // The encode() calls above should all complete without overflow,
+//            // since we control the contents of the strings. Verify this in
+//            // sane mode so that we notice it if the strings change so that
+//            // they go beyond the max size of PRDDTA.
+//            SanityManager.ASSERT(success,
+//                "PRDID, PRDDTA_PLATFORM_ID and EXTNAM exceeded PRDDTA_MAXSIZE");
+//        }
+
+        prddtaLen += DRDAConstants.PRDDTA_APPL_ID_FIXED_LEN;
+
+        prddtaLen += DRDAConstants.PRDDTA_USER_ID_FIXED_LEN;
+
+        // Mark that we have an empty suffix in PRDDTA_ACCT_SUFFIX_LEN_BYTE.
+        prddta_.put(DRDAConstants.PRDDTA_ACCT_SUFFIX_LEN_BYTE, (byte) 0);
+        prddtaLen++;
+
+        // the length byte value does not include itself.
+        prddta_.put(DRDAConstants.PRDDTA_LEN_BYTE, (byte) (prddtaLen - 1));
+        
+        return prddta_.array();
+    }
+    
+    // Construct the correlation token.
+    // The crrtkn has the following format.
+    //
+    // <Almost IP address>.<local port number><current time in millis>
+    // |                   | |               ||                  |
+    // +----+--------------+ +-----+---------++---------+--------+
+    //      |                      |                |
+    //    8 bytes               4 bytes         6 bytes
+    // Total lengtho of 19 bytes.
+    //
+    // 1 char for each 1/2 byte in the IP address.
+    // If the first character of the <IP address> or <port number>
+    // starts with '0' thru '9', it will be mapped to 'G' thru 'P'.
+    // Reason for mapping the IP address is in order to use the crrtkn as the LUWID when using SNA in a hop site.
+    public byte[] getCorrelationToken(int port) {
+        byte[] crrtkn_ = new byte[19];
+
+        byte[] localAddressBytes;
+        try {
+            localAddressBytes = Inet4Address.getLocalHost().getAddress();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+            throw new IllegalStateException(e);
+        }
+
+        // IP addresses are returned in a 4 byte array.
+        // Obtain the character representation of each half byte.
+        for (int i = 0, j = 0; i < 4; i++, j += 2) {
+
+            // since a byte is signed in java, convert any negative
+            // numbers to positive before shifting.
+            int num = localAddressBytes[i] < 0 ? localAddressBytes[i] + 256 : localAddressBytes[i];
+            int halfByte = (num >> 4) & 0x0f;
+
+            // map 0 to G
+            // The first digit of the IP address is is replaced by
+            // the characters 'G' thro 'P'(in order to use the crrtkn as the LUWID when using
+            // SNA in a hop site). For example, 0 is mapped to G, 1 is mapped H,etc.
+            if (i == 0) {
+                crrtkn_[j] = ccsidManager.getCCSID().encode("" + (char) (halfByte + 'G')).get(); 
+                        //ccsidManager.getCCSID().numToSnaRequiredCrrtknChar_[halfByte];
+            } else {
+                crrtkn_[j] = ccsidManager.getCCSID().encode("" + halfByte).get();
+                        //netAgent_.getCurrentCcsidManager().numToCharRepresentation_[halfByte];
+            }
+
+            halfByte = (num) & 0x0f;
+            crrtkn_[j + 1] = ccsidManager.getCCSID().encode("" + halfByte).get();
+            //netAgent_.getCurrentCcsidManager().numToCharRepresentation_[halfByte];
+        }
+
+        // fill the '.' in between the IP address and the port number
+        crrtkn_[8] = ccsidManager.getCCSID().encode(".").get();
+
+        // Port numbers have values which fit in 2 unsigned bytes.
+        // Java returns port numbers in an int so the value is not negative.
+        // Get the character representation by converting the
+        // 4 low order half bytes to the character representation.
+        int num = port;
+        //int num = netAgent_.socket_.getLocalPort();
+
+        int halfByte = (num >> 12) & 0x0f;
+        crrtkn_[9] = ccsidManager.getCCSID().encode("" + halfByte).get(); 
+                //netAgent_.getCurrentCcsidManager().numToSnaRequiredCrrtknChar_[halfByte];
+        halfByte = (num >> 8) & 0x0f;
+        crrtkn_[10] = ccsidManager.getCCSID().encode("" + halfByte).get();
+                //netAgent_.getCurrentCcsidManager().numToCharRepresentation_[halfByte];
+        halfByte = (num >> 4) & 0x0f;
+        crrtkn_[11] = ccsidManager.getCCSID().encode("" + halfByte).get();
+                //netAgent_.getCurrentCcsidManager().numToCharRepresentation_[halfByte];
+        halfByte = (num) & 0x0f;
+        crrtkn_[12] = ccsidManager.getCCSID().encode("" + halfByte).get();
+                //netAgent_.getCurrentCcsidManager().numToCharRepresentation_[halfByte];
+
+        // The final part of CRRTKN is a 6 byte binary number that makes the
+        // crrtkn unique, which is usually the time stamp/process id.
+        // If the new time stamp is the
+        // same as one of the already created ones, then recreate the time stamp.
+        long time = System.currentTimeMillis();
+
+        for (int i = 0; i < 6; i++) {
+            // store 6 bytes of 8 byte time into crrtkn
+            crrtkn_[i + 13] = (byte) (time >>> (40 - (i * 8)));
+        }
+        return crrtkn_;
     }
     
     public void buildSECCHK(int secmec, String rdbnam, String user, String password, byte[] sectkn, byte[] sectkn2){
@@ -200,8 +337,9 @@ public class DRDAConnectRequest extends DRDARequest {
         writeScalarString(CodePoint.TYPDEFNAM, typdefnam);
     }
     
-    private void buildPRDDTA(byte[] prddta) {
+    private void buildPRDDTA() {
         // TODO: @AGG collapse
+        byte[] prddta = getProductData();
         int prddtaLength = (prddta[DRDAConstants.PRDDTA_LEN_BYTE] & 0xff) + 1;
         writeScalarBytes(CodePoint.PRDDTA, prddta, 0, prddtaLength);
     }

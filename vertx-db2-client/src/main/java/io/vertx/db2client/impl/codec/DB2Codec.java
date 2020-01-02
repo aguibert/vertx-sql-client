@@ -16,14 +16,16 @@
  */
 package io.vertx.db2client.impl.codec;
 
+import java.util.ArrayDeque;
+
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.CombinedChannelDuplexHandler;
 import io.vertx.db2client.impl.DB2SocketConnection;
 
-import java.util.ArrayDeque;
-
 public class DB2Codec extends CombinedChannelDuplexHandler<DB2Decoder, DB2Encoder> {
+    
+    // TODO @AGG check what packet length limit actually is for DB2
+    static final int PACKET_PAYLOAD_LENGTH_LIMIT = 0xFFFFFF;
 
   private final ArrayDeque<CommandCodec<?, ?>> inflight = new ArrayDeque<>();
   
@@ -31,7 +33,7 @@ public class DB2Codec extends CombinedChannelDuplexHandler<DB2Decoder, DB2Encode
 
   public DB2Codec(DB2SocketConnection mySQLSocketConnection) {
     DB2Encoder encoder = new DB2Encoder(inflight, mySQLSocketConnection);
-    DB2Decoder decoder = new DB2Decoder(inflight, encoder);
+    DB2Decoder decoder = new DB2Decoder(inflight);
     init(decoder, encoder);
   }
   

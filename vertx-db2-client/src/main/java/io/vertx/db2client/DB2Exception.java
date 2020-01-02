@@ -4,6 +4,8 @@ package io.vertx.db2client;
  * A {@link RuntimeException} signals that an error occurred.
  */
 public class DB2Exception extends RuntimeException {
+  private static final long serialVersionUID = 4249056398546361175L;
+  
   private final int errorCode;
   private final String sqlState;
 

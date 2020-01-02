@@ -8,6 +8,7 @@ import java.sql.Statement;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.db2client.DB2ConnectOptions;
+import io.vertx.db2client.DB2Connection;
 import io.vertx.db2client.DB2Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Row;
@@ -16,29 +17,14 @@ import io.vertx.sqlclient.Tuple;
 
 /**
  * To Run DB2 in a docker container thaty is compatible with this sample, run
- * the command:
- * 
- * <pre>
- docker run --ulimit memlock=-1:-1 -it --rm=true --memory-swappiness=0 \
-  --name db2-quarkus \
-  -e DBNAME=quark_db \
-  -e DB2INSTANCE=quark \
-  -e DB2INST1_PASSWORD=quark \
-  -e AUTOCONFIG=false \
-  -e ARCHIVE_LOGS=false \
-  -e LICENSE=accept \
-  -p 50000:50000 \
-  --privileged \
-  ibmcom/db2:11.5.0.0a
- * </pre>
+ * the script at scripts/db2.sh
  *
  * @author aguibert
- *
  */
 public class DB2Examples {
 
     public static void runJDBC() throws Exception {
-        try (Connection con = DriverManager.getConnection("jdbc:db2://localhost:50000/quark_db", "quark", "quark")) {
+        try (Connection con = DriverManager.getConnection("jdbc:db2://localhost:50000/vertx_db", "db2user", "db2pass")) {
              con.createStatement().execute("CREATE TABLE users ( id varchar(50) )");
              con.createStatement().execute("INSERT INTO users VALUES ('andy')");
              con.createStatement().execute("INSERT INTO users VALUES ('julien')");
@@ -64,9 +50,9 @@ public class DB2Examples {
         DB2ConnectOptions connectOptions = new DB2ConnectOptions()//
                 .setPort(50000)//
                 .setHost("localhost")//
-                .setDatabase("quark_db")//
-                .setUser("quark")//
-                .setPassword("quark");
+                .setDatabase("vertx_db")//
+                .setUser("db2user")//
+                .setPassword("db2pass");
 
         // Pool options
         PoolOptions poolOptions = new PoolOptions().setMaxSize(5);
@@ -75,7 +61,6 @@ public class DB2Examples {
         DB2Pool client = DB2Pool.pool(connectOptions, poolOptions);
 
         System.out.println("Created pool");
-
 //        client.query("CREATE TABLE IF NOT EXISTS users ( id varchar(50) )", ar -> {
 //            if (ar.succeeded()) {
 //                System.out.println("Created table");
@@ -108,8 +93,16 @@ public class DB2Examples {
             dumpResults(ar);
           });
         
-        waitFor(750);
+//        // TODO @AGG prepared statement with 2 query params not working yet
+//        client.preparedQuery("SELECT * FROM users WHERE id=? OR id=?", Tuple.of("andy", "julien"), ar -> {
+//            System.out.println("@AGG inside PS lambda");
+//            dumpResults(ar);
+//          });
+        
+        waitFor(2000);
         client.close();
+        waitFor(500);
+        System.out.println("Done");
     }
     
     private static void waitFor(int ms) {

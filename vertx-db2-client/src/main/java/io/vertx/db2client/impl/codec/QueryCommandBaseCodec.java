@@ -16,10 +16,11 @@
  */
 package io.vertx.db2client.impl.codec;
 
+import java.util.stream.Collector;
+
 import io.netty.buffer.ByteBuf;
 import io.vertx.db2client.impl.drda.CCSIDManager;
 import io.vertx.db2client.impl.drda.ColumnMetaData;
-import io.vertx.db2client.impl.drda.Cursor;
 import io.vertx.db2client.impl.drda.DRDAQueryRequest;
 import io.vertx.db2client.impl.drda.DRDAQueryResponse;
 import io.vertx.sqlclient.Row;
@@ -27,22 +28,15 @@ import io.vertx.sqlclient.impl.RowDesc;
 import io.vertx.sqlclient.impl.command.CommandResponse;
 import io.vertx.sqlclient.impl.command.QueryCommandBase;
 
-import java.nio.charset.StandardCharsets;
-import java.util.function.Consumer;
-import java.util.stream.Collector;
-
 abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends CommandCodec<Boolean, C> {
 
     protected static enum CommandHandlerState {
-        HANDLING_COLUMN_DEFINITION, 
-        HANDLING_ROW_DATA, 
-        HANDLING_END_OF_QUERY
+        HANDLING_COLUMN_DEFINITION, HANDLING_ROW_DATA, HANDLING_END_OF_QUERY
     }
 
     protected CommandHandlerState commandHandlerState = CommandHandlerState.HANDLING_COLUMN_DEFINITION;
     protected ColumnMetaData columnDefinitions;
     protected RowResultDecoder<?, T> decoder;
-    private int currentColumn;
     CCSIDManager ccsidManager = new CCSIDManager();
 
     QueryCommandBaseCodec(C cmd) {
@@ -60,7 +54,7 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
         else
             decodeUpdate(payload);
     }
-    
+
     private void decodeUpdate(ByteBuf payload) {
         System.out.println("@AGG decode update");
         DRDAQueryResponse updateResponse = new DRDAQueryResponse(payload, ccsidManager);
@@ -68,7 +62,7 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
         // TODO: If auto-generated keys, read an OPNQRY here
         // readOpenQuery()
         updateResponse.readLocalCommit();
-        
+
         T result = emptyResult(cmd.collector());
         cmd.resultHandler().handleResult(updatedCount, 0, null, result, null);
         completionHandler.handle(CommandResponse.success(true));
@@ -85,8 +79,8 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
             decoder = new RowResultDecoder<>(cmd.collector(), new DB2RowDesc(columnDefinitions), resp.getCursor(),
                     resp);
             commandHandlerState = CommandHandlerState.HANDLING_ROW_DATA;
-//            return;
-//        case HANDLING_ROW_DATA:
+            // return;
+            // case HANDLING_ROW_DATA:
             while (decoder.next()) {
                 decoder.handleRow(columnDefinitions.columns_, payload);
             }
@@ -95,10 +89,10 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
             else
                 throw new UnsupportedOperationException("Need to fetch more data from DB");
             commandHandlerState = CommandHandlerState.HANDLING_END_OF_QUERY;
-//            decodeQuery(payload);
-//            return;
-//        case HANDLING_END_OF_QUERY:
-            int updatedCount = 0; // @AGG hardcoded to 0
+            // decodeQuery(payload);
+            // return;
+            // case HANDLING_END_OF_QUERY:
+            int updatedCount = 0; // TODO @AGG hardcoded to 0
             T result;
             Throwable failure;
             int size;
@@ -115,7 +109,7 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
             throw new IllegalStateException("Unknown state: " + commandHandlerState);
         }
     }
-    
+
     @Override
     public String toString() {
         return super.toString() + " sql=" + cmd.sql();

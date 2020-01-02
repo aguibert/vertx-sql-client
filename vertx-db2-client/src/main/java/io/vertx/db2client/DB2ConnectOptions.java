@@ -36,7 +36,7 @@ public class DB2ConnectOptions extends SqlConnectOptions {
   
   public DB2ConnectOptions(String uri) {
       super();
-      // TODO @AGG
+      throw new UnsupportedOperationException("TODO @AGG need to implement uri parsing");
     }
 
   public DB2ConnectOptions(DB2ConnectOptions other) {
@@ -94,7 +94,7 @@ public class DB2ConnectOptions extends SqlConnectOptions {
   @Override
   public JsonObject toJson() {
     JsonObject json = super.toJson();
-    // TODO @AGG
-    return json;
+    throw new UnsupportedOperationException("TODO @AGG implement toJson");
+//    return json;
   }
 }

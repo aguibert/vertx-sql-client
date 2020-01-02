@@ -1,30 +1,20 @@
 package io.vertx.db2client;
 
 import io.vertx.codegen.annotations.Fluent;
-import io.vertx.codegen.annotations.GenIgnore;
 import io.vertx.codegen.annotations.VertxGen;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.db2client.impl.DB2ConnectionImpl;
-import io.vertx.sqlclient.PreparedQuery;
-import io.vertx.sqlclient.Row;
-import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.SqlConnection;
-import io.vertx.sqlclient.SqlResult;
-import io.vertx.sqlclient.Tuple;
-
-import static io.vertx.db2client.DB2ConnectOptions.*;
-
-import java.util.stream.Collector;
 
 /**
- * A connection to MySQL server.
+ * A connection to DB2 server.
  */
 @VertxGen
 public interface DB2Connection extends SqlConnection {
   /**
-   * Create a connection to MySQL server with the given {@code connectOptions}.
+   * Create a connection to DB2 server with the given {@code connectOptions}.
    *
    * @param vertx the vertx instance
    * @param connectOptions the options for the connection

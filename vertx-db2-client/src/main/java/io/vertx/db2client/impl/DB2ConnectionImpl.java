@@ -7,7 +7,6 @@ import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.db2client.DB2ConnectOptions;
 import io.vertx.db2client.DB2Connection;
-import io.vertx.db2client.impl.command.PingCommand;
 import io.vertx.sqlclient.impl.Connection;
 import io.vertx.sqlclient.impl.SqlConnectionImpl;
 
@@ -40,12 +39,8 @@ public class DB2ConnectionImpl extends SqlConnectionImpl<DB2ConnectionImpl> impl
         }
     }
 
-    private final DB2ConnectionFactory factory;
-
     public DB2ConnectionImpl(DB2ConnectionFactory factory, Context context, Connection conn) {
         super(context, conn);
-
-        this.factory = factory;
     }
 
     @Override
@@ -55,15 +50,15 @@ public class DB2ConnectionImpl extends SqlConnectionImpl<DB2ConnectionImpl> impl
 
     @Override
     public DB2Connection ping(Handler<AsyncResult<Void>> handler) {
-        PingCommand cmd = new PingCommand();
-        cmd.handler = handler;
-        schedule(cmd);
-        return this;
+        throw new UnsupportedOperationException("Ping command not implemented");
+//        PingCommand cmd = new PingCommand();
+//        cmd.handler = handler;
+//        schedule(cmd);
+//        return this;
     }
 
     @Override
     public DB2Connection resetConnection(Handler<AsyncResult<Void>> handler) {
-        // TODO @AGG
-        return null;
+        throw new UnsupportedOperationException("TODO @AGG reset connection not implemented");
     }
 }
