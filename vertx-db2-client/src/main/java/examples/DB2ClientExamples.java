@@ -40,6 +40,14 @@ public class DB2ClientExamples {
             con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (2, 'A computer scientist is someone who fixes things that aren''t broken.')");
             con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (3, 'After enough decimal places, nobody gives a damn.')");
             con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (4, 'A bad random number generator: 1, 1, 1, 1, 1, 4.33e+67, 1, 1, 1')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (5, 'A computer program does what you tell it to do, not what you want it to do.')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (6, 'Emacs is a nice operating system, but I prefer UNIX. — Tom Christaensen')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (7, 'Any program that runs right is obsolete.')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (8, 'A list is only as strong as its weakest link. — Donald Knuth')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (9, 'Feature: A bug with seniority.')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (10, 'Computers make very fast, very accurate mistakes.')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (11, '<script>alert(\"This should not be displayed in a browser alert box.\");</script>')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (12, 'フレームワークのベンチマーク')");
 //             con.createStatement().execute("CREATE TABLE users ( id varchar(50) )");
 //             con.createStatement().execute("INSERT INTO users VALUES ('andy')");
 //             con.createStatement().execute("INSERT INTO users VALUES ('julien')");
@@ -109,12 +117,10 @@ public class DB2ClientExamples {
 //          });
         
         client.query("SELECT id, message from immutable", ar -> {
-            System.out.println("inside query");
             RowSet<Row> result = ar.result();
             System.out.println("size=" + result.size());
             for (Tuple row : result) {
-                System.out.println("Row id = " + row.getInteger(0));
-                System.out.println("Value = " + row.getString(1));
+                System.out.println("  " + row);
             }
         });
         

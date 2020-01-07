@@ -27,10 +27,7 @@ class RowResultDecoder<C, R> extends RowDecoder<C, R> {
     }
 
     public boolean next() {
-        if (response.readOpenQueryData()) {
-            System.out.println("@AGG cursor buffer dump:");
-            DB2Codec.dumpBuffer(cursor.dataBuffer_);
-        }
+        response.readOpenQueryData();
         return cursor.next();
     }
 
