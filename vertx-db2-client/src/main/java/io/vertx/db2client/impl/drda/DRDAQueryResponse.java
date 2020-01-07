@@ -189,17 +189,18 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
         return updateCount;
     }
     
-    public void readExecute(/*PreparedStatementCallbackInterface preparedStatement*/) {
+    public long readExecute(/*PreparedStatementCallbackInterface preparedStatement*/) {
         startSameIdChainParse();
-        parseEXCSQLSTTreply();//preparedStatement);
+        long updateCount = parseEXCSQLSTTreply();//preparedStatement);
         endOfSameIdChainData();
+        return updateCount;
     }
     
     // Parse the reply for the Execute SQL Statement Command.
     // This method handles the parsing of all command replies and reply data
     // for the excsqlstt command.
     // Also called by ClientCallableStatement.readExecuteCall()
-    private void parseEXCSQLSTTreply(/*StatementCallbackInterface statementI*/) {
+    private long parseEXCSQLSTTreply(/*StatementCallbackInterface statementI*/) {
         // first handle the transaction component, which consists of one or more
         // reply messages indicating the transaction state.
         // These are ENDUOWRM, CMMRQSRM, or RDBUPDRM.  If RDBUPDRM is returned,
@@ -228,7 +229,7 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
             if (peekCP == CodePoint.PBSD) {
                 parsePBSD();
             }
-            return;
+            return 0;
         }
 
         // check for a possible TYPDEFNAM or TYPDEFOVR which may be present
@@ -237,12 +238,13 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
 
         // an SQLCARD may be retunred if there was no output data, result sets or parameters,
         // or in the case of an error.
+        long updateCount = 0;
         if (peekCP == CodePoint.SQLCARD) {
             NetSqlca netSqlca = parseSQLCARD(null);
 
             //statementI.completeExecute(netSqlca);
             NetSqlca.complete(netSqlca);
-            long updateCount = netSqlca.getUpdateCount(); // @AGG may want to return this?
+            updateCount = netSqlca.getUpdateCount();
             peekCP = peekCodePoint();
         } else if (peekCP == CodePoint.SQLDTARD) {
             throw new UnsupportedOperationException("stored procedure");
@@ -280,6 +282,7 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
             parsePBSD();
             peekCP = peekCodePoint();
         }
+        return updateCount;
     }
     
     private void parseResultSetProcedure(/*StatementCallbackInterface statementI*/) {

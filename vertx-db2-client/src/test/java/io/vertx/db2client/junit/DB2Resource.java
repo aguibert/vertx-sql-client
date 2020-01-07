@@ -22,6 +22,8 @@ import org.testcontainers.containers.Db2Container;
 import io.vertx.db2client.DB2ConnectOptions;
 
 public class DB2Resource extends ExternalResource {
+	
+	private static final String CUSTOM_DB2 = System.getProperty("DB2_HOST", System.getenv("DB2_HOST"));
     
     /**
      * In order for this container to be reused across test runs you need to add the line:
@@ -39,17 +41,30 @@ public class DB2Resource extends ExternalResource {
     
     @Override
     protected void before() throws Throwable {
-        instance.start();
-        options = new DB2ConnectOptions()
-                .setHost(instance.getContainerIpAddress())
-                .setPort(instance.getFirstMappedPort())
-                .setDatabase(instance.getDatabaseName())
-                .setUser(instance.getUsername())
-                .setPassword(instance.getPassword());
+    	if (CUSTOM_DB2 == null) {
+    		instance.start();
+	        options = new DB2ConnectOptions()
+	                .setHost(instance.getContainerIpAddress())
+	                .setPort(instance.getFirstMappedPort())
+	                .setDatabase(instance.getDatabaseName())
+	                .setUser(instance.getUsername())
+	                .setPassword(instance.getPassword());
+    	} else {
+	        options = new DB2ConnectOptions()
+	                .setHost(get("DB2_HOST"))
+	                .setPort(Integer.valueOf(get("DB2_PORT")))
+	                .setDatabase(get("DB2_NAME"))
+	                .setUser(get("DB2_USER"))
+	                .setPassword(get("DB2_PASS"));
+    	}
     }
     
-    public DB2ConnectOptions options() {
-        return new DB2ConnectOptions(options);
-      }
+	public DB2ConnectOptions options() {
+		return new DB2ConnectOptions(options);
+	}
+	
+	private String get(String name) {
+		return System.getProperty(name, System.getenv(name));
+	}
     
 }

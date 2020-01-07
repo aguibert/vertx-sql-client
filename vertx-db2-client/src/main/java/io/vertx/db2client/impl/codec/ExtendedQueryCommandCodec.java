@@ -16,11 +16,14 @@
  */
 package io.vertx.db2client.impl.codec;
 
+import java.util.stream.Collector;
+
 import com.ibm.db2.jcc.am.ResultSet;
 
 import io.netty.buffer.ByteBuf;
 import io.vertx.db2client.impl.drda.DRDAQueryRequest;
 import io.vertx.db2client.impl.drda.DRDAQueryResponse;
+import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.Tuple;
 import io.vertx.sqlclient.impl.RowDesc;
 import io.vertx.sqlclient.impl.command.CommandResponse;
@@ -42,28 +45,43 @@ class ExtendedQueryCommandCodec<R> extends ExtendedQueryCommandBaseCodec<R, Exte
         System.out.println("@AGG extended query encode");
         super.encode(encoder);
         System.out.println("@AGG statement: " + statement);
-        if (!DRDAQueryRequest.isQuery(cmd.sql()))
-            throw new UnsupportedOperationException("Update PS");
+        
         ByteBuf packet = allocateBuffer();
+        DRDAQueryRequest openQuery = new DRDAQueryRequest(packet, ccsidManager);
         String dbName = encoder.socketConnection.database();
         int fetchSize = 0; // TODO @AGG get fetch size from config
-        DRDAQueryRequest openQuery = new DRDAQueryRequest(packet, ccsidManager);
         Tuple params = cmd.params();
         Object[] inputs = new Object[params.size()];
         for (int i = 0; i < params.size(); i++)
             inputs[i] = params.getValue(i);
-        openQuery.writeOpenQuery(statement.section, dbName, fetchSize, ResultSet.TYPE_FORWARD_ONLY, inputs.length,
-                statement.paramDesc.paramDefinitions(), inputs);
-        openQuery.completeCommand();
+        
+        if (DRDAQueryRequest.isQuery(cmd.sql())) {
+            openQuery.writeOpenQuery(statement.section, dbName, fetchSize, ResultSet.TYPE_FORWARD_ONLY, inputs.length,
+                    statement.paramDesc.paramDefinitions(), inputs);
+            openQuery.completeCommand();
+        } else { // is an update
+        	boolean outputExpected = false; // TODO @AGG implement later, is true if result set metadata num columns > 0
+        	boolean chainAutoCommit = true;
+        	openQuery.writeExecute(statement.section, dbName, statement.paramDesc.paramDefinitions(), inputs, inputs.length, outputExpected, chainAutoCommit);
+        	openQuery.buildRDBCMM();
+        	openQuery.completeCommand();
+        	
+        	// TODO: for auto generated keys we also need to flow a writeOpenQuery
+        }
         encoder.chctx.writeAndFlush(packet);
     }
-
+    
     @Override
     void decodePayload(ByteBuf payload, int payloadLength) {
         System.out.println("@AGG extended query decode");
-        if (!DRDAQueryRequest.isQuery(cmd.sql()))
-            throw new UnsupportedOperationException("Decode update PS");
-
+        if (DRDAQueryRequest.isQuery(cmd.sql())) {
+        	decodeQuery(payload);
+        } else { // is update
+        	decodeUpdate(payload);
+        }
+    }
+    
+    private void decodeQuery(ByteBuf payload) {
         DRDAQueryResponse resp = new DRDAQueryResponse(payload, ccsidManager);
         resp.setColumnMetaData(columnDefinitions);
         resp.readBeginOpenQuery();
@@ -90,5 +108,22 @@ class ExtendedQueryCommandCodec<R> extends ExtendedQueryCommandBaseCodec<R, Exte
         cmd.resultHandler().handleResult(updatedCount, size, rowDesc, result, failure);
         completionHandler.handle(CommandResponse.success(true));
         return;
+    }
+    
+    private static <A, T> T emptyResult(Collector<Row, A, T> collector) {
+        return collector.finisher().apply(collector.supplier().get());
+    }
+    
+    private void decodeUpdate(ByteBuf payload) {
+        System.out.println("@AGG decode update");
+        DRDAQueryResponse updateResponse = new DRDAQueryResponse(payload, ccsidManager);
+        int updatedCount = (int) updateResponse.readExecute();
+        // TODO: If auto-generated keys, read an OPNQRY here
+        // readOpenQuery()
+        updateResponse.readLocalCommit();
+
+        R result = emptyResult(cmd.collector());
+        cmd.resultHandler().handleResult(updatedCount, 0, null, result, null);
+        completionHandler.handle(CommandResponse.success(true));
     }
 }

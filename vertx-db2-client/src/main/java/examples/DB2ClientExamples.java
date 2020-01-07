@@ -20,7 +20,7 @@ import io.vertx.sqlclient.Tuple;
 public class DB2ClientExamples {
 
     public static void runJDBC() throws Exception {
-        try (Connection con = DriverManager.getConnection("jdbc:db2://localhost:50000/vertx_db", "db2user", "db2pass")) {
+        try (Connection con = DriverManager.getConnection("jdbc:db2://192.168.1.22:32772/test", "db2inst1", "foobar1234")) {
             con.createStatement().execute("DROP TABLE IF exists mutable");
             con.createStatement().execute("CREATE TABLE mutable\n" + 
                     "            (\n" + 
@@ -71,11 +71,11 @@ public class DB2ClientExamples {
         
         // Connect options
         DB2ConnectOptions connectOptions = new DB2ConnectOptions()//
-                .setPort(50000)//
-                .setHost("localhost")//
-                .setDatabase("vertx_db")//
-                .setUser("db2user")//
-                .setPassword("db2pass");
+                .setPort(32772)//
+                .setHost("192.168.1.22")//
+                .setDatabase("test")//
+                .setUser("db2inst1")//
+                .setPassword("foobar1234");
 
         // Pool options
         PoolOptions poolOptions = new PoolOptions().setMaxSize(5);
@@ -83,7 +83,6 @@ public class DB2ClientExamples {
         // Create the client pool
         DB2Pool client = DB2Pool.pool(connectOptions, poolOptions);
 
-        System.out.println("Created pool");
 //        client.query("CREATE TABLE IF NOT EXISTS users ( id varchar(50) )", ar -> {
 //            if (ar.succeeded()) {
 //                System.out.println("Created table");
@@ -92,41 +91,17 @@ public class DB2ClientExamples {
 //            }
 //        });
 //
-//        client.query("INSERT INTO users VALUES ('andy5')", ar -> {
-//            System.out.println("INSERT results");
-//            dumpResults(ar);
-//        });
-//        
-//        client.query("SELECT * FROM users", ar2 -> {
-//            System.out.println("SELECT results");
-//            dumpResults(ar2);
-//        });
-//        client.query("SELECT * FROM users WHERE id='andy'", ar2 -> {
-//            System.out.println("SELECT results");
-//            dumpResults(ar2);
-//        });
-//        
-//        client.query("DELETE FROM users WHERE id='andy5'", ar3 -> {
-//            System.out.println("DELETE results");
-//            dumpResults(ar3);
-//        });
+        client.query("SELECT id, message from immutable", ar -> {
+            dumpResults(ar);
+        });
         
-//        client.preparedQuery("SELECT * FROM users WHERE id=?", Tuple.of("andy"), ar -> {
+//        client.preparedQuery("SELECT id, message FROM immutable WHERE id=? OR id=?", Tuple.of(1, 2), ar -> {
 //            System.out.println("@AGG inside PS lambda");
 //            dumpResults(ar);
 //          });
         
-        client.query("SELECT id, message from immutable", ar -> {
-            RowSet<Row> result = ar.result();
-            System.out.println("size=" + result.size());
-            for (Tuple row : result) {
-                System.out.println("  " + row);
-            }
-        });
-        
-//        // TODO @AGG prepared statement with 2 query params not working yet
-//        client.preparedQuery("SELECT * FROM users WHERE id=? OR id=?", Tuple.of("andy", "julien"), ar -> {
-//            System.out.println("@AGG inside PS lambda");
+//        client.preparedQuery("INSERT INTO immutable (id, message) VALUES (?, ?)", Tuple.of(14, "Hello updates!"), ar -> {
+//            System.out.println("@AGG inside PS update lambda");
 //            dumpResults(ar);
 //          });
         
@@ -149,13 +124,11 @@ public class DB2ClientExamples {
             if (ar.succeeded()) {
                 RowSet<Row> result = ar.result();
                 System.out.println("result=" + result);
-                System.out.println("  rows=" + result.rowCount());
+                System.out.println("  rowCount=" + result.rowCount());
                 System.out.println("  size=" + result.size());
-                System.out.println(" names=" + result.columnsNames());
-                for (Row row : result) {
-                    System.out.println("  row=" + row);
-                    System.out.println("    name=" + row.getColumnName(0));
-                    System.out.println("    value=" + row.getString(0));
+                System.out.println("  names=" + result.columnsNames());
+                for (Tuple row : result) {
+                    System.out.println("    " + row);
                 }
             } else {
                 System.out.println("Failure: " + ar.cause().getMessage());

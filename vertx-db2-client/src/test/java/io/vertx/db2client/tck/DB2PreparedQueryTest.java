@@ -22,7 +22,7 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-//@Ignore // TODO @AGG get this TCK test passing
+@Ignore // TODO @AGG get this TCK test passing
 @RunWith(VertxUnitRunner.class)
 public class DB2PreparedQueryTest extends DB2PreparedQueryTestBase {
   @Override
