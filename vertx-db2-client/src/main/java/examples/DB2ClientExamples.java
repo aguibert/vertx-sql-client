@@ -2,13 +2,9 @@ package examples;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Statement;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.db2client.DB2ConnectOptions;
-import io.vertx.db2client.DB2Connection;
 import io.vertx.db2client.DB2Pool;
 import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Row;
@@ -21,23 +17,42 @@ import io.vertx.sqlclient.Tuple;
  *
  * @author aguibert
  */
-public class DB2Examples {
+public class DB2ClientExamples {
 
     public static void runJDBC() throws Exception {
         try (Connection con = DriverManager.getConnection("jdbc:db2://localhost:50000/vertx_db", "db2user", "db2pass")) {
-             con.createStatement().execute("CREATE TABLE users ( id varchar(50) )");
-             con.createStatement().execute("INSERT INTO users VALUES ('andy')");
-             con.createStatement().execute("INSERT INTO users VALUES ('julien')");
-             con.createStatement().execute("INSERT INTO users VALUES ('bob')");
-             con.createStatement().execute("INSERT INTO users VALUES ('chuck')");
-//            Statement stmt = con.createStatement();
-            PreparedStatement ps = con.prepareStatement("SELECT * FROM users WHERE id=?");
-            ps.setString(1, "andy");
-            ResultSet rs = ps.executeQuery();
-            // ResultSet rs = stmt.executeQuery("SELECT * FROM users WHERE id='andy'");
-//            ResultSet rs = stmt.executeQuery("SELECT * FROM users");
-            while (rs.next())
-                System.out.println("Got JDBC result: " + rs.getString(1));
+            con.createStatement().execute("DROP TABLE IF exists mutable");
+            con.createStatement().execute("CREATE TABLE mutable\n" + 
+                    "            (\n" + 
+                    "              id  integer       NOT NULL,\n" + 
+                    "              val varchar(2048) NOT NULL,\n" + 
+                    "              PRIMARY KEY (id)\n" + 
+                    "            )");
+            
+            con.createStatement().execute("DROP TABLE IF EXISTS immutable");
+                    con.createStatement().execute("CREATE TABLE immutable (" +
+            "id      integer       NOT NULL, " +
+              "message varchar(2048) NOT NULL," +
+              "PRIMARY KEY (id)" +
+              ")");
+
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (1, 'fortune: No such file or directory');");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (2, 'A computer scientist is someone who fixes things that aren''t broken.')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (3, 'After enough decimal places, nobody gives a damn.')");
+            con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (4, 'A bad random number generator: 1, 1, 1, 1, 1, 4.33e+67, 1, 1, 1')");
+//             con.createStatement().execute("CREATE TABLE users ( id varchar(50) )");
+//             con.createStatement().execute("INSERT INTO users VALUES ('andy')");
+//             con.createStatement().execute("INSERT INTO users VALUES ('julien')");
+//             con.createStatement().execute("INSERT INTO users VALUES ('bob')");
+//             con.createStatement().execute("INSERT INTO users VALUES ('chuck')");
+////            Statement stmt = con.createStatement();
+//            PreparedStatement ps = con.prepareStatement("SELECT * FROM users WHERE id=?");
+//            ps.setString(1, "andy");
+//            ResultSet rs = ps.executeQuery();
+//            // ResultSet rs = stmt.executeQuery("SELECT * FROM users WHERE id='andy'");
+////            ResultSet rs = stmt.executeQuery("SELECT * FROM users");
+//            while (rs.next())
+//                System.out.println("Got JDBC result: " + rs.getString(1));
         }
     }
 
@@ -45,7 +60,7 @@ public class DB2Examples {
 //         runJDBC();
 //         if (true)
 //         return;
-
+        
         // Connect options
         DB2ConnectOptions connectOptions = new DB2ConnectOptions()//
                 .setPort(50000)//
@@ -88,10 +103,20 @@ public class DB2Examples {
 //            dumpResults(ar3);
 //        });
         
-        client.preparedQuery("SELECT * FROM users WHERE id=?", Tuple.of("andy"), ar -> {
-            System.out.println("@AGG inside PS lambda");
-            dumpResults(ar);
-          });
+//        client.preparedQuery("SELECT * FROM users WHERE id=?", Tuple.of("andy"), ar -> {
+//            System.out.println("@AGG inside PS lambda");
+//            dumpResults(ar);
+//          });
+        
+        client.query("SELECT id, message from immutable", ar -> {
+            System.out.println("inside query");
+            RowSet<Row> result = ar.result();
+            System.out.println("size=" + result.size());
+            for (Tuple row : result) {
+                System.out.println("Row id = " + row.getInteger(0));
+                System.out.println("Value = " + row.getString(1));
+            }
+        });
         
 //        // TODO @AGG prepared statement with 2 query params not working yet
 //        client.preparedQuery("SELECT * FROM users WHERE id=? OR id=?", Tuple.of("andy", "julien"), ar -> {
@@ -99,7 +124,7 @@ public class DB2Examples {
 //            dumpResults(ar);
 //          });
         
-        waitFor(2000);
+        waitFor(3000);
         client.close();
         waitFor(500);
         System.out.println("Done");

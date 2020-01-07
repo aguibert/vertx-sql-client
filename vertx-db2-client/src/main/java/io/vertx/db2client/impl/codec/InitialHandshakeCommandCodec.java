@@ -106,7 +106,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
         DRDAConnectRequest cmd = new DRDAConnectRequest(packet, ccsidManager);
         try {
             cmd.buildEXCSAT(DRDAConstants.EXTNAM, // externalName,
-                    0x0A, // targetAgent,
+                    0x07, // 0x0A, // targetAgent,
                     DRDAConstants.TARGET_SQL_AM, // targetSqlam,
                     0x0C, // targetRdb,
                     TARGET_SECURITY_MEASURE, //targetSecmgr,

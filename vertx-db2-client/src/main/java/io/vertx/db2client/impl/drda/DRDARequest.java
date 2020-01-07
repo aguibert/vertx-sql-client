@@ -9,8 +9,6 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Hashtable;
 
-import org.apache.derby.client.net.SQLState;
-
 import io.netty.buffer.ByteBuf;
 
 public abstract class DRDARequest {

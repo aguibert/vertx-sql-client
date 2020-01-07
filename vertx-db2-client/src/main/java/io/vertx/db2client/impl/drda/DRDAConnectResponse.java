@@ -1013,110 +1013,42 @@ public class DRDAConnectResponse extends DRDAResponse {
         }
         int managerCount = managerListLength / 4;
         
-        // @AGG remove this after fixing peekCP() ? 
-        //adjustLengths(managerListLength); // @AGG added this line in order to make parseEXCSATRD() parse lengths down to 0 properly
-
         // the managerCount should be equal to the same number of
         // managers sent on the excsat.
 
+        System.out.println("Database server attributes:");
         // read each of the manager levels returned from the server.
         for (int i = 0; i < managerCount; i++) {
 
             // first two byte are the manager's codepoint, next two bytes are the level.
             int managerCodePoint = readUnsignedShort(); //buffer.readUnsignedShort(); //parseCODPNTDR();
             int managerLevel = readUnsignedShort(); //buffer.readUnsignedShort(); // parseMGRLVLN();
-
-            // TODO: decide which manager levels we should support
+            
+            // TODO @AGG: decide which manager levels we should support
             // check each manager to make sure levels are within proper limits
             // for this driver.  Also make sure unexpected managers are not returned.
-//            switch (managerCodePoint) {
-//
-//            case CodePoint.AGENT:
-//                if ((managerLevel < NetConfiguration.MIN_AGENT_MGRLVL) ||
-//                        (managerLevel > netConnection.targetAgent_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetAgent_ = managerLevel;
-//                break;
-//
-//            case CodePoint.CMNTCPIP:
-//                if ((managerLevel < NetConfiguration.MIN_CMNTCPIP_MGRLVL) ||
-//                        (managerLevel > netConnection.targetCmntcpip_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetCmntcpip_ = managerLevel;
-//                break;
-//
-//            case CodePoint.RDB:
-//                if ((managerLevel < NetConfiguration.MIN_RDB_MGRLVL) ||
-//                        (managerLevel > netConnection.targetRdb_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetRdb_ = managerLevel;
-//                break;
-//
-//            case CodePoint.SECMGR:
-//                if ((managerLevel < NetConfiguration.MIN_SECMGR_MGRLVL) ||
-//                        (managerLevel > netConnection.targetSecmgr_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetSecmgr_ = managerLevel;
-//                break;
-//
-//            case CodePoint.SQLAM:
-//                if ((managerLevel < NetConfiguration.MIN_SQLAM_MGRLVL) ||
-//                        (managerLevel > netAgent_.targetSqlam_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netAgent_.orignalTargetSqlam_ = managerLevel;
-//                break;
-//
-//            case CodePoint.CMNAPPC:
-//                if ((managerLevel < NetConfiguration.MIN_CMNAPPC_MGRLVL) ||
-//                        (managerLevel > netConnection.targetCmnappc_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetCmnappc_ = managerLevel;
-//                break;
-//
-//            case CodePoint.XAMGR:
-//                if ((managerLevel != 0) &&
-//                        (managerLevel < NetConfiguration.MIN_XAMGR_MGRLVL) ||
-//                        (managerLevel > netConnection.targetXamgr_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetXamgr_ = managerLevel;
-//                break;
-//
-//            case CodePoint.SYNCPTMGR:
-//                if ((managerLevel != 0) &&
-//                        (managerLevel < NetConfiguration.MIN_SYNCPTMGR_MGRLVL) ||
-//                        (managerLevel > netConnection.targetSyncptmgr_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetSyncptmgr_ = managerLevel;
-//                break;
-//            case CodePoint.UNICODEMGR:
-//                if ((managerLevel < NetConfiguration.MIN_UNICODE_MGRLVL) ||
-//                        (managerLevel > netConnection.targetUnicodemgr_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetUnicodemgr_ = managerLevel;
-//                break;
-//            case CodePoint.RSYNCMGR:
-//                if ((managerLevel != 0) &&
-//                        (managerLevel < NetConfiguration.MIN_RSYNCMGR_MGRLVL) ||
-//                        (managerLevel > netConnection.targetRsyncmgr_)) {
-//                    doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                }
-//                netConnection.targetRsyncmgr_ = managerLevel;
-//                break;
-//                // The target server must not provide information for any target managers
-//                // unless the source explicitly requests.  The following managers are never requested.
-//            default:
-//                doMgrlvlrmSemantics(managerCodePoint, managerLevel);
-//                break;
-//            }
+            switch (managerCodePoint) {
+                case CodePoint.AGENT:
+                    System.out.println("  AGENT=" + managerLevel);
+                    break;
+                case CodePoint.SQLAM:
+                    System.out.println("  SQLAM=" + managerLevel);
+                    break;
+                case CodePoint.UNICODEMGR:
+                    System.out.println("  UNICODEMGR=" + managerLevel);
+                    break;
+                case CodePoint.RDB:
+                    System.out.println("  RDB=" + managerLevel);
+                    break;
+                case CodePoint.SECMGR:
+                    System.out.println("  SECMGR=" + managerLevel);
+                    break;
+                case CodePoint.CMNTCPIP:
+                    System.out.println("  CMNTCPIP=" + managerLevel);
+                    break;
+                default:
+                    System.out.println("  WARN: Unknown manager codepoint: 0x" + Integer.toHexString(managerCodePoint));
+            }
         }
     }
 

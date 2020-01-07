@@ -23,8 +23,6 @@ package io.vertx.db2client.impl.drda;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 
-import org.apache.derby.client.am.SqlException;
-
 import io.netty.buffer.ByteBuf;
 
 /**

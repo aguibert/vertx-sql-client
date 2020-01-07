@@ -1,14 +1,7 @@
 package io.vertx.db2client.impl.drda;
 
-import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
-import java.sql.Blob;
-import java.sql.Clob;
-import java.sql.Date;
 import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -1366,7 +1359,6 @@ public class DRDAQueryRequest extends DRDAConnectRequest {
         } else {
             if (Typdef.typdef.isCcsidMbcSet()) {
             byte[] sqlBytes = string.getBytes(Typdef.typdef.getCcsidMbcEncoding());
-//                byte[] sqlBytes = string.getBytes(netAgent_.typdef_.getCcsidMbcEncoding());
             buffer.writeByte(0x00);
 //                write1Byte(0x00);
             buffer.writeInt(sqlBytes.length);

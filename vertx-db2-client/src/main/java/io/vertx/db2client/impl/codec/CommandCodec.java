@@ -50,7 +50,7 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
 
     void sendPacket(ByteBuf packet, int payloadLength) {
         System.out.println("@AGG sending packet size=" + payloadLength + "  " + packet);
-        DB2Codec.dumpBuffer(packet);
+//        DB2Codec.dumpBuffer(packet);
         if (payloadLength >= DB2Codec.PACKET_PAYLOAD_LENGTH_LIMIT) {
             /*
              * The original packet exceeds the limit of packet length, split the packet

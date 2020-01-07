@@ -1,16 +1,10 @@
 package io.vertx.db2client.impl.drda;
 
-import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.sql.Connection;
 import java.util.ArrayDeque;
 import java.util.Deque;
 
-import org.apache.derby.client.am.DisconnectException;
-
 import io.netty.buffer.ByteBuf;
-import io.vertx.db2client.impl.codec.DB2Codec;
 
 public abstract class DRDAResponse {
     
@@ -442,9 +436,6 @@ public abstract class DRDAResponse {
             doValnsprmSemantics(CodePoint.SVRCOD, svrcod);
         }
         
-        // @AGG remove this after fixing peekCP() ? 
-        //adjustLengths(2); // @AGG had to add this after debugging
-
         return svrcod;
     }
     
@@ -559,7 +550,7 @@ public abstract class DRDAResponse {
         if (readFastUnsignedByte() != CodePoint.NULLDATA) {
             int vcm_length = readFastUnsignedShort();
             if (vcm_length > 0) {
-                stringToBeSet = readFastString(vcm_length, ccsidManager.getCCSID());//netAgent_.targetTypdef_.getCcsidMbcEncoding());
+                stringToBeSet = readFastString(vcm_length, Typdef.targetTypdef.getCcsidMbcEncoding());
             }
             if (readFastUnsignedByte() != CodePoint.NULLDATA) {
                 throw new IllegalStateException("SQLState.NET_NVCM_NVCS_BOTH_NON_NULL");
@@ -572,7 +563,7 @@ public abstract class DRDAResponse {
             if (readFastUnsignedByte() != CodePoint.NULLDATA) {
                 int vcs_length = readFastUnsignedShort();
                 if (vcs_length > 0) {
-                    stringToBeSet = readFastString(vcs_length, ccsidManager.getCCSID());//netAgent_.targetTypdef_.getCcsidSbcEncoding());
+                    stringToBeSet = readFastString(vcs_length, Typdef.targetTypdef.getCcsidSbcEncoding());
                 }
             }
         }
@@ -607,7 +598,6 @@ public abstract class DRDAResponse {
         if (readFastUnsignedByte() != CodePoint.NULLDATA) {
             int vcm_length = readFastUnsignedShort();
             if (vcm_length > 0)
-            //stringToBeSet = readString (vcm_length, netAgent_.targetTypdef_.getCcsidMbcEncoding());
             {
                 skipFastBytes(vcm_length);
             }
@@ -622,7 +612,6 @@ public abstract class DRDAResponse {
             if (readFastUnsignedByte() != CodePoint.NULLDATA) {
                 int vcs_length = readFastUnsignedShort();
                 if (vcs_length > 0)
-                //stringToBeSet = readString (vcs_length, netAgent_.targetTypdef_.getCcsidSbcEncoding());
                 {
                     skipFastBytes(vcs_length);
                 }
@@ -698,20 +687,18 @@ public abstract class DRDAResponse {
         if (DRDAConstants.TARGET_SQL_AM >= DRDAConstants.MGRLVL_7) {
             // skip over the rdbnam for now
             // SQLRDBNAME; PROTOCOL TYPE VCS; ENVLID 0x32; Length Override 1024
-            ccsidManager.setCCSID(CCSIDManager.UTF8); // @AGG forcing CCSID to UTF8
             String rdbname = parseFastVCS();
-            ccsidManager.setCCSID(CCSIDManager.EBCDIC);
         }
 
 
         int sqlerrmcCcsid;
         byte[] sqlerrmc = readFastLDBytes();
         if (sqlerrmc != null) {
-            sqlerrmcCcsid = ccsidManager.getCCSIDNumber();//  netAgent_.targetTypdef_.getCcsidMbc();
+            sqlerrmcCcsid = Typdef.targetTypdef.getCcsidMbc();
             skipFastBytes(2);
         } else {
             sqlerrmc = readFastLDBytes();
-            sqlerrmcCcsid = ccsidManager.getCCSIDNumber(); //netAgent_.targetTypdef_.getCcsidSbc();
+            sqlerrmcCcsid = Typdef.targetTypdef.getCcsidSbc();
         }
         
         netSqlca.setSqlerrd(sqlerrd);
@@ -727,17 +714,16 @@ public abstract class DRDAResponse {
 
         int vcm_length = readFastUnsignedShort();
         if (vcm_length > 0) {
-            //stringToBeSet = readFastString(vcm_length, netAgent_.targetTypdef_.getCcsidMbcEncoding());
-            stringToBeSet = readFastString(vcm_length, CCSIDManager.UTF8); // @AGG forcing UTF8
+            stringToBeSet = readFastString(vcm_length, Typdef.targetTypdef.getCcsidMbcEncoding());
         }
         int vcs_length = readFastUnsignedShort();
         if (vcm_length > 0 && vcs_length > 0) {
-            throw new IllegalStateException("SQLState.NET_VCM_VCS_LENGTHS_INVALID");
+            throw new IllegalStateException("SQLState.NET_VCM_VCS_LENGTHS_INVALID: VCM and VCS lengths are mutually exclusive " +
+        "but both were set: vcsLen=" + vcs_length + "  vcmLen=" + vcm_length);
 //            agent_.accumulateChainBreakingReadExceptionAndThrow(new DisconnectException(agent_,
 //                new ClientMessageId(SQLState.NET_VCM_VCS_LENGTHS_INVALID)));
         } else if (vcs_length > 0) {
-            //stringToBeSet = readFastString(vcs_length, netAgent_.targetTypdef_.getCcsidSbcEncoding());
-            stringToBeSet = readFastString(vcs_length, CCSIDManager.UTF8); // @AGG forcing UTF8
+            stringToBeSet = readFastString(vcs_length, Typdef.targetTypdef.getCcsidSbcEncoding());
         }
 
         return stringToBeSet;
@@ -1307,8 +1293,7 @@ public abstract class DRDAResponse {
     // precsion, scale and other stuffs
     String parseFastVCS() {
         // doublecheck what readString() does if the length is 0
-        return readFastString(readFastUnsignedShort(), CCSIDManager.UTF8); // @AGG forcing UTF8
-//                netAgent_.targetTypdef_.getCcsidSbcEncoding());
+        return readFastString(readFastUnsignedShort(), Typdef.targetTypdef.getCcsidSbcEncoding());
     }
 
     final void skipBytes(int length) {

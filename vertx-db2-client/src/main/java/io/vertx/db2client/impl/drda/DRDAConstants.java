@@ -1,7 +1,5 @@
 package io.vertx.db2client.impl.drda;
 
-import org.apache.derby.client.net.NetConfiguration;
-
 public class DRDAConstants {
     // Value to use when padding non-character data in ddm objects.
     public static final byte NON_CHAR_DDM_DATA_PAD_BYTE = 0x00;
@@ -96,7 +94,7 @@ public class DRDAConstants {
     public static final int MGRLVL_7 = 0x07;
     
     // @AGG added for default targetSqlam
-    public static final int TARGET_SQL_AM = 0x0B;
+    public static final int TARGET_SQL_AM = 0x07; // 0x0B;
 
     // Indicates userid/encrypted password security mechanism.
     public static final int SECMEC_EUSRIDPWD = 0x09;
@@ -120,11 +118,6 @@ public class DRDAConstants {
 
     // Indicates userid with strong password substitute security mechanism.
     public static final int SECMEC_USRSSBPWD = 0x08;
-
-    // list of security mechanisms supported by this driver
-    public static final int[] SECMGR_SECMECS = { NetConfiguration.SECMEC_EUSRIDPWD, NetConfiguration.SECMEC_USRENCPWD,
-            NetConfiguration.SECMEC_USRIDPWD, NetConfiguration.SECMEC_USRIDONL, NetConfiguration.SECMEC_EUSRIDDTA,
-            NetConfiguration.SECMEC_EUSRPWDDTA, NetConfiguration.SECMEC_USRSSBPWD };
 
     // IEEE ASCII constant.
     public static final String SYSTEM_ASC = "QTDSQLASC";

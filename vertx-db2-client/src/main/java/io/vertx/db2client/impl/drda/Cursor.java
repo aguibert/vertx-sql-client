@@ -327,7 +327,7 @@ public class Cursor {
 
     // Build a Java boolean from a 1-byte signed binary representation.
     private boolean get_BOOLEAN(int column) {
-        return dataBuffer_.getByte(dataBuffer_.readerIndex() + columnDataPosition_[column - 1]) == 0;
+        return dataBuffer_.getByte(columnDataPosition_[column - 1]) == 0;
 //        if ( SignedBinary.getByte
 //             ( dataBuffer_, columnDataPosition_[column - 1] ) == 0 )
 //        { return false; }
@@ -336,35 +336,36 @@ public class Cursor {
 
     // Build a Java short from a 2-byte signed binary representation.
     private final short get_SMALLINT(int column) {
-        return dataBuffer_.getShort(dataBuffer_.readerIndex() + columnDataPosition_[column - 1]);
+        return dataBuffer_.getShort(columnDataPosition_[column - 1]);
 //        return SignedBinary.getShort(dataBuffer_,
 //                columnDataPosition_[column - 1]);
     }
 
     // Build a Java int from a 4-byte signed binary representation.
     protected final int get_INTEGER(int column) {
-        return dataBuffer_.getInt(dataBuffer_.readerIndex() + columnDataPosition_[column - 1]);
+        // @AGG had to get integer as Little Endian
+        return dataBuffer_.getIntLE(columnDataPosition_[column - 1]);
 //        return SignedBinary.getInt(dataBuffer_,
 //                columnDataPosition_[column - 1]);
     }
 
     // Build a Java long from an 8-byte signed binary representation.
     private final long get_BIGINT(int column) {
-        return dataBuffer_.getLong(dataBuffer_.readerIndex() + columnDataPosition_[column - 1]);
+        return dataBuffer_.getLong(columnDataPosition_[column - 1]);
 //        return SignedBinary.getLong(dataBuffer_,
 //                columnDataPosition_[column - 1]);
     }
 
     // Build a Java float from a 4-byte floating point representation.
     private final float get_FLOAT(int column) {
-        return dataBuffer_.getFloat(dataBuffer_.readerIndex() + columnDataPosition_[column - 1]);
+        return dataBuffer_.getFloat(columnDataPosition_[column - 1]);
 //        return FloatingPoint.getFloat(dataBuffer_,
 //                columnDataPosition_[column - 1]);
     }
 
     // Build a Java double from an 8-byte floating point representation.
     private final double get_DOUBLE(int column) {
-        return dataBuffer_.getDouble(dataBuffer_.readerIndex() + columnDataPosition_[column - 1]);
+        return dataBuffer_.getDouble(columnDataPosition_[column - 1]);
 //        return FloatingPoint.getDouble(dataBuffer_,
 //                columnDataPosition_[column - 1]);
     }
@@ -1266,7 +1267,7 @@ public class Cursor {
             extdtaPositions_.clear();  // reset positions for this row
         }
 
-        NetSqlca[] netSqlca = this.parseSQLCARD(qrydscTypdef_);
+        NetSqlca[] netSqlca = parseSQLCARD(qrydscTypdef_);
         // If we don't have at least one byte in the buffer for the DA null indicator,
         // then we need to send a CNTQRY request to fetch the next block of data.
         // Read the DA null indicator. Do this before we close mark the statement
@@ -1410,7 +1411,7 @@ public class Cursor {
 
                     case Typdef.LOBLENGTH:
                         columnDataPosition[index] = dataBuffer_.readerIndex();
-                        columnDataComputedLength[index] = this.skipFdocaBytes(fdocaLength_[index] & 0x7fff, index);
+                        columnDataComputedLength[index] = skipFdocaBytes(fdocaLength_[index] & 0x7fff, index);
                         break;
 
                         // for short variable character string and short variable byte string,
