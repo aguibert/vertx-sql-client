@@ -22,6 +22,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -42,11 +44,17 @@ import io.vertx.sqlclient.Tuple;
  */
 public class DB2ClientExamples {
 	
-	static final String HOST = "localhost";
-	static final int PORT = 50000;
-	static final String DB_NAME = "vertx_db";
-	static final String DB_USER = "db2user";
-	static final String DB_PASS = "db2pass";
+//	static final String HOST = "localhost";
+//	static final int PORT = 50000;
+//	static final String DB_NAME = "vertx_db";
+//	static final String DB_USER = "db2user";
+//	static final String DB_PASS = "db2pass";
+  
+  static final String HOST = "localhost";
+  static final int PORT = 33849;
+  static final String DB_NAME = "test";
+  static final String DB_USER = "db2inst1";
+  static final String DB_PASS = "foobar1234";
     
     static {
         System.setProperty("java.util.logging.config.file", Paths.get("src", "test", "resources", "vertx-default-jul-logging.properties").toString());
@@ -54,28 +62,11 @@ public class DB2ClientExamples {
     
     public static void runJDBC() throws Exception {
         try (Connection con = DriverManager.getConnection("jdbc:db2://" + HOST + ":" + PORT + "/" + DB_NAME, DB_USER, DB_PASS)) {
-//            runInitSql(con);
+            runInitSql(con);
 //            
 //            // Insert lots of data to immutable table
 //            for (int i = 13; i < 100; i++)
 //                con.createStatement().execute("INSERT INTO immutable (id, message) VALUES (" + i + ", 'Sample data " + i + "')");
-            
-            PreparedStatement ps = con.prepareStatement("SELECT * FROM immutable WHERE id=?");
-            ps.setInt(1, 5);
-            ps.executeQuery();
-            
-            ps.setInt(1, 6);
-            ps.executeQuery();
-            
-            ps.setInt(1, 7);
-            ps.executeQuery();
-            
-            ps = con.prepareStatement("SELECT message FROM immutable WHERE id=?");
-            ps.setInt(1, 8);
-            ps.executeQuery();
-            
-            ps.setInt(1, 9);
-            ps.executeQuery();
             
 //            getDB2Message(con, -804, "01", "07002", -2146303980, 20, 0, 0, -1550, 0);
             
@@ -165,11 +156,26 @@ public class DB2ClientExamples {
 //            });
 //        });
         
-        client.preparedQuery("SELECT id, message FROM immutable", ar -> {
-            System.out.println("@AGG inside PS lambda");
-            dumpResults(ar);
+        client.getConnection(handler -> {
+          SqlConnection conn = handler.result();
+          List<Tuple> batch = new ArrayList<>();
+          batch.add(Tuple.of(1));
+          batch.add(Tuple.of(3));
+          batch.add(Tuple.of(5));
+          conn.preparedBatch("SELECT * FROM immutable WHERE id=?", batch, batchHandler -> {
+            System.out.println("@AGG inside prepared batch query");
+            RowSet<Row> rows = batchHandler.result();
+            System.out.println("Result 1: " + rows.size());
+            System.out.println("Result 2: " + rows.next().size());
+            System.out.println("Result 3: " + rows.next().size());
+          });
         });
         
+//        client.preparedQuery("SELECT id, message FROM immutable", ar -> {
+//            System.out.println("@AGG inside PS lambda");
+//            dumpResults(ar);
+//        });
+//        
 //        client.preparedQuery("SELECT id, message FROM immutable WHERE id=? OR id=?", Tuple.of(1, 2), ar -> {
 //            System.out.println("@AGG inside PS lambda");
 //            dumpResults(ar);

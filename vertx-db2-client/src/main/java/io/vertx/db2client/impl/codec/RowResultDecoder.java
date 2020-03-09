@@ -29,8 +29,8 @@ import io.vertx.sqlclient.impl.RowDecoder;
 class RowResultDecoder<C, R> extends RowDecoder<C, R> {
 
     final DB2RowDesc rowDesc;
-    final Cursor cursor;
-    final DRDAQueryResponse response;
+    Cursor cursor;
+    DRDAQueryResponse response;
 
     RowResultDecoder(Collector<Row, C, R> collector, DB2RowDesc rowDesc, Cursor cursor, DRDAQueryResponse resp) {
         super(collector);
@@ -38,7 +38,12 @@ class RowResultDecoder<C, R> extends RowDecoder<C, R> {
         this.cursor = cursor;
         this.response = resp;
     }
-
+    
+    public void renew(DRDAQueryResponse resp, Cursor c) {
+        this.response = resp;
+        this.cursor = c;
+    }
+    
     public boolean isQueryComplete() {
         return response.isQueryComplete();
     }

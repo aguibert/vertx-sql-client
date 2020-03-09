@@ -109,13 +109,6 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
         }
     }
     
-    @Deprecated // @AGG reads all data sync
-    public void readOpenQuery() { // @AGG removed callback StatementCallbackInterface statement) {
-        startSameIdChainParse();
-        parseOPNQRYreply(); // @AGG removed callback statement);
-        endOfSameIdChainData();
-    }
-    
     /**
      * Reads the following items:
      * - SQLDA Reply Data (SQLDARD)
@@ -125,6 +118,10 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
      */
     public void readBeginOpenQuery() {
         startSameIdChainParse();
+        readOpenQuery();
+    }
+     
+    public void readOpenQuery() {
         int peekCP = peekCodePoint();
         
         if (peekCP == CodePoint.OPNQRYRM) {
