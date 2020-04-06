@@ -49,13 +49,21 @@ public abstract class DRDARequest {
 
     // tracks the request correlation ID to use for commands and command objects.
     // this is automatically updated as commands are built and sent to the server.
-    private int correlationID_ = 0;
+    private int correlationID_ = -1;
+    private int firstCorrelationID = -1;
+    private static int nextCorrelationID_ = 1;
 
     private boolean simpleDssFinalize = false;
     
     public DRDARequest(ByteBuf buffer, ConnectionMetaData metadata) {
         this.buffer = buffer;
         this.metadata = metadata;
+    }
+    
+    public int getFirstCorrelationId() {
+    	if (firstCorrelationID == -1)
+    		throw new IllegalStateException("Correlation ID has not been set yet.");
+    	return firstCorrelationID;
     }
     
     String getHostname() {
@@ -72,7 +80,10 @@ public abstract class DRDARequest {
     // the buffer are complete and their length and chaining bytes can
     // be updated appropriately.
     protected final void createCommand() {
-        buildDss(false, false, false, DssConstants.GDSFMT_RQSDSS, ++correlationID_, false);
+    	correlationID_ = nextCorrelationID_++;
+    	if (firstCorrelationID == -1)
+    		firstCorrelationID = correlationID_;
+        buildDss(false, false, false, DssConstants.GDSFMT_RQSDSS, correlationID_, false);
     }
     
     private final void buildDss(boolean dssHasSameCorrelator, boolean chainedToNextStructure,

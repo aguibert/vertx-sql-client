@@ -25,7 +25,7 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
 
     protected ColumnMetaData columnDefinitions;
     protected final boolean isQuery;
-
+    
     QueryCommandBaseCodec(C cmd) {
         super(cmd);
         this.isQuery = DRDAQueryRequest.isQuery(cmd.sql());
@@ -54,6 +54,7 @@ abstract class QueryCommandBaseCodec<T, C extends QueryCommandBase<T>> extends C
         } else {
         	encodeUpdate(req);
         }
+        requestID = req.getFirstCorrelationId();
         req.completeCommand();
         
         sendPacket(packet, packet.writerIndex() - packetStartIdx);

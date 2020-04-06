@@ -62,7 +62,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
 
     @Override
     void decodePayload(ByteBuf payload, int payloadLength) {
-        DRDAConnectResponse response = new DRDAConnectResponse(payload, encoder.connMetadata);
+        DRDAConnectResponse response = new DRDAConnectResponse(payload, encoder.connMetadata, requestID);
         switch (status) {
             case ST_CONNECTING:
                 response.readExchangeServerAttributes();
@@ -83,6 +83,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
                         correlationToken,
                         DRDAConstants.SYSTEM_ASC);
                 securityCheck.completeCommand();
+                requestID = securityCheck.getFirstCorrelationId();
                 int lenOfPayload = packet.writerIndex() - packetStartIdx;
                 sendPacket(packet, lenOfPayload);
                 return;
@@ -117,6 +118,7 @@ class InitialHandshakeCommandCodec extends AuthenticationCommandBaseCodec<Connec
         );
         cmd.buildACCSEC(TARGET_SECURITY_MEASURE, this.cmd.database(), null);
         cmd.completeCommand();
+        requestID = cmd.getFirstCorrelationId();
 
         int lenOfPayload = packet.writerIndex() - packetStartIdx;
         sendPacket(packet, lenOfPayload);

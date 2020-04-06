@@ -27,6 +27,7 @@ abstract class CommandCodec<R, C extends CommandBase<R>> {
     public R result;
     final C cmd;
     DB2Encoder encoder;
+    int requestID;
 
     CommandCodec(C cmd) {
         this.cmd = cmd;

@@ -24,8 +24,8 @@ import io.netty.buffer.ByteBuf;
 
 public class DRDAConnectResponse extends DRDAResponse {
   
-    public DRDAConnectResponse(ByteBuf buffer, ConnectionMetaData metadata) {
-      super(buffer, metadata);
+    public DRDAConnectResponse(ByteBuf buffer, ConnectionMetaData metadata, int correlationId) {
+      super(buffer, metadata, correlationId);
     }
     
     public void readAccessSecurity(int securityMechanism) {

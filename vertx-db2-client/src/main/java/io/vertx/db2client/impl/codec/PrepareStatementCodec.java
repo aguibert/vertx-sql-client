@@ -63,6 +63,7 @@ class PrepareStatementCodec extends CommandCodec<PreparedStatement, PrepareState
         prepareCommand.writePrepareDescribeOutput(cmd.sql(), dbName, section);
         prepareCommand.writeDescribeInput(section, dbName);
         prepareCommand.completeCommand();
+        requestID = prepareCommand.getFirstCorrelationId();
 
         // set payload length
         int payloadLength = packet.writerIndex() - packetStartIdx;
@@ -73,7 +74,7 @@ class PrepareStatementCodec extends CommandCodec<PreparedStatement, PrepareState
     void decodePayload(ByteBuf payload, int payloadLength) {
         switch (commandHandlerState) {
         case INIT:
-            DRDAQueryResponse response = new DRDAQueryResponse(payload, encoder.connMetadata);
+            DRDAQueryResponse response = new DRDAQueryResponse(payload, encoder.connMetadata, requestID);
             response.readPrepareDescribeInputOutput();
             rowDesc = response.getOutputColumnMetaData();
             paramDesc = response.getInputColumnMetaData();

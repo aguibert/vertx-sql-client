@@ -32,7 +32,7 @@ public abstract class DRDAResponse {
     protected int dssLength_;
     boolean dssIsContinued_;
     private boolean dssIsChainedWithSameID_;
-    private int dssCorrelationID_ = 1;
+    private int dssCorrelationID_;
 
     protected int peekedLength_ = 0;
     int peekedCodePoint_ = END_OF_COLLECTION; // saves the peeked codept
@@ -42,9 +42,12 @@ public abstract class DRDAResponse {
     final static int END_OF_SAME_ID_CHAIN = -2;
     final static int END_OF_BUFFER = -3;
 
-    public DRDAResponse(ByteBuf buffer, ConnectionMetaData metadata) {
+    public DRDAResponse(ByteBuf buffer, ConnectionMetaData metadata, int correlationID) {
         this.buffer = buffer;
         this.metadata = metadata;
+        this.dssCorrelationID_ = correlationID;
+        if (correlationID == 0)
+        	throw new IllegalArgumentException("Correlation ID must be > 0");
     }
     
     protected final void startSameIdChainParse() {
@@ -59,7 +62,7 @@ public abstract class DRDAResponse {
 //                new DisconnectException(agent_, 
 //                new ClientMessageId(SQLState.NET_COLLECTION_STACK_NOT_EMPTY)));
         }
-        if (this.dssLength_ != 0) {
+        if (dssLength_ != 0) {
             throw new IllegalStateException("SQLState.NET_DSS_NOT_ZERO " + dssLength_);
 //            agent_.accumulateChainBreakingReadExceptionAndThrow(
 //                new DisconnectException(agent_, 
@@ -943,8 +946,7 @@ public abstract class DRDAResponse {
         // corrid must be the one expected or a -1 which gets returned in some error cases.
         if ((correlationID != dssCorrelationID_) && (correlationID != -1)) {
             // doSyntaxrmSemantics(CodePoint.SYNERRCD_INVALID_CORRELATOR);
-            throw new IllegalStateException(
-                    "Invalid correlator ID. Got " + correlationID + " expected " + dssCorrelationID_);
+            throw new IllegalStateException("Invalid correlator ID. Got " + correlationID + " expected " + dssCorrelationID_);
         } else {
             dssCorrelationID_ = nextCorrelationID;
         }

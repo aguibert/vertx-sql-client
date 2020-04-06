@@ -41,7 +41,7 @@ class PingCommandCodec extends CommandCodec<Void, PingCommand> {
 
 	@Override
 	void decodePayload(ByteBuf payload, int payloadLength) {
-		DRDAConnectResponse response = new DRDAConnectResponse(payload, md);
+		DRDAConnectResponse response = new DRDAConnectResponse(payload, md, requestID);
 		response.readExchangeServerAttributes();
 		completionHandler.handle(CommandResponse.success(null));
 		return;
@@ -61,9 +61,9 @@ class PingCommandCodec extends CommandCodec<Void, PingCommand> {
             0, // targetXamgr,
             0, // targetSyncptmgr,
             0, // targetRsyncmgr,
-            CCSIDConstants.TARGET_UNICODE_MGR // targetUnicodemgr
-    );
+            CCSIDConstants.TARGET_UNICODE_MGR); // targetUnicodemgr
 		cmd.completeCommand();
+		requestID = cmd.getFirstCorrelationId();
 
 		int lenOfPayload = packet.writerIndex() - packetStartIdx;
 		sendPacket(packet, lenOfPayload);

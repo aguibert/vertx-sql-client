@@ -59,7 +59,7 @@ class SimpleQueryCommandCodec<T> extends QueryCommandBaseCodec<T, SimpleQueryCom
 	}
 
 	void decodeUpdate(ByteBuf payload) {
-		DRDAQueryResponse updateResponse = new DRDAQueryResponse(payload, encoder.connMetadata);
+		DRDAQueryResponse updateResponse = new DRDAQueryResponse(payload, encoder.connMetadata, requestID);
 		querySection.release();
 
 		int updatedCount = (int) updateResponse.readExecuteImmediate();
@@ -81,7 +81,7 @@ class SimpleQueryCommandCodec<T> extends QueryCommandBaseCodec<T, SimpleQueryCom
 	void decodeQuery(ByteBuf payload) {
 		querySection.release();
 		
-		DRDAQueryResponse resp = new DRDAQueryResponse(payload, encoder.connMetadata);
+		DRDAQueryResponse resp = new DRDAQueryResponse(payload, encoder.connMetadata, requestID);
 		resp.readPrepareDescribeOutput();
 		resp.readBeginOpenQuery();
 		columnDefinitions = resp.getOutputColumnMetaData();

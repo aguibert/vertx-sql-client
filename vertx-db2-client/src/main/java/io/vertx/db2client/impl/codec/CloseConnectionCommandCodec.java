@@ -33,12 +33,13 @@ class CloseConnectionCommandCodec extends CommandCodec<Void, CloseConnectionComm
     DRDAQueryRequest closeCursor = new DRDAQueryRequest(packet, encoder.connMetadata);
     closeCursor.buildRDBCMM();
     closeCursor.completeCommand();
+    requestID = closeCursor.getFirstCorrelationId();
     sendNonSplitPacket(packet);
   }
 
   @Override
   void decodePayload(ByteBuf payload, int payloadLength) {
-      DRDAQueryResponse closeCursor = new DRDAQueryResponse(payload, encoder.connMetadata);
+      DRDAQueryResponse closeCursor = new DRDAQueryResponse(payload, encoder.connMetadata, requestID);
       closeCursor.readLocalCommit();
       encoder.chctx.channel().close();
   }

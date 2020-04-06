@@ -36,10 +36,10 @@ public class DRDAQueryResponse extends DRDAConnectResponse {
     
     private NetSqlca sqlca;
     
-    private long queryInstanceId = 0;
+    private long queryInstanceId = 0; // TODO come back to this
     
-    public DRDAQueryResponse(ByteBuf buffer, ConnectionMetaData metadata) {
-        super(buffer, metadata);
+    public DRDAQueryResponse(ByteBuf buffer, ConnectionMetaData metadata, int correlationId) {
+        super(buffer, metadata, correlationId);
     }
     
     public void readPrepareDescribeOutput() { // @AGG removed callback StatementCallbackInterface statement) {
